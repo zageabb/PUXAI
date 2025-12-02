@@ -1,0 +1,5 @@
+# Core dependencies for Local Assistant
+requests
+pystray
+pillow
+pywin32; sys_platform == 'win32'
