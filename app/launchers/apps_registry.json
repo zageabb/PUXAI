@@ -1,42 +1,116 @@
 {
-  "windows": [
+  "apps": [
     {
-      "id": "notepad",
-      "name": "Notepad",
-      "category": "Utilities",
-      "command": ["notepad.exe"]
+      "id": "terminal",
+      "name": "Terminal",
+      "windows_command": "wt.exe",
+      "linux_command": "gnome-terminal",
+      "icon": null,
+      "category": "system"
     },
     {
-      "id": "calculator",
-      "name": "Calculator",
-      "category": "Utilities",
-      "command": ["calc.exe"]
+      "id": "browser",
+      "name": "Web Browser",
+      "windows_command": "start microsoft-edge:",
+      "linux_command": "xdg-open https://www.google.com",
+      "icon": null,
+      "category": "web"
     },
     {
       "id": "explorer",
       "name": "File Explorer",
-      "category": "System",
-      "command": ["explorer.exe"]
-    }
-  ],
-  "linux": [
-    {
-      "id": "terminal",
-      "name": "Terminal",
-      "category": "Utilities",
-      "command": ["x-terminal-emulator"]
+      "windows_command": "explorer.exe",
+      "linux_command": "nautilus",
+      "icon": null,
+      "category": "system"
     },
     {
-      "id": "files",
-      "name": "Files",
-      "category": "System",
-      "command": ["xdg-open", "."]
+      "id": "settings",
+      "name": "Settings",
+      "windows_command": "start ms-settings:",
+      "linux_command": "gnome-control-center",
+      "icon": null,
+      "category": "system"
     },
     {
       "id": "calculator",
       "name": "Calculator",
-      "category": "Utilities",
-      "command": ["gnome-calculator"]
+      "windows_command": "calc.exe",
+      "linux_command": "gnome-calculator",
+      "icon": null,
+      "category": "utilities"
+    },
+    {
+      "id": "text_editor",
+      "name": "Text Editor",
+      "windows_command": "notepad.exe",
+      "linux_command": "gedit",
+      "icon": null,
+      "category": "utilities"
+    },
+    {
+      "id": "task_manager",
+      "name": "Task Manager / System Monitor",
+      "windows_command": "taskmgr.exe",
+      "linux_command": "gnome-system-monitor",
+      "icon": null,
+      "category": "system"
+    },
+    {
+      "id": "office_word",
+      "name": "Microsoft Word (Office 365)",
+      "windows_command": "start https://www.office.com/launch/word",
+      "linux_command": "xdg-open https://www.office.com/launch/word",
+      "icon": null,
+      "category": "office"
+    },
+    {
+      "id": "office_excel",
+      "name": "Microsoft Excel (Office 365)",
+      "windows_command": "start https://www.office.com/launch/excel",
+      "linux_command": "xdg-open https://www.office.com/launch/excel",
+      "icon": null,
+      "category": "office"
+    },
+    {
+      "id": "office_powerpoint",
+      "name": "Microsoft PowerPoint (Office 365)",
+      "windows_command": "start https://www.office.com/launch/powerpoint",
+      "linux_command": "xdg-open https://www.office.com/launch/powerpoint",
+      "icon": null,
+      "category": "office"
+    },
+    {
+      "id": "office_outlook",
+      "name": "Microsoft Outlook (Office 365)",
+      "windows_command": "start https://outlook.office.com",
+      "linux_command": "xdg-open https://outlook.office.com",
+      "icon": null,
+      "category": "office"
+    },
+    {
+      "id": "office_onenote",
+      "name": "Microsoft OneNote (Office 365)",
+      "windows_command": "start https://www.onenote.com",
+      "linux_command": "xdg-open https://www.onenote.com",
+      "icon": null,
+      "category": "office"
+    },
+    {
+      "id": "office_teams",
+      "name": "Microsoft Teams (Office 365)",
+      "windows_command": "start https://teams.microsoft.com",
+      "linux_command": "xdg-open https://teams.microsoft.com",
+      "icon": null,
+      "category": "office"
+    },
+    {
+      "id": "office_onedrive",
+      "name": "Microsoft OneDrive (Office 365)",
+      "windows_command": "start https://onedrive.live.com",
+      "linux_command": "xdg-open https://onedrive.live.com",
+      "icon": null,
+      "category": "office"
     }
   ]
 }
