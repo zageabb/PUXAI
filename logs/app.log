@@ -1,0 +1,8 @@
+2026-03-02 10:09:59 [INFO] root - Logging initialized for Local Assistant at level INFO
+2026-03-02 10:09:59 [INFO] __main__ - Starting Local Assistant on Windows
+2026-03-02 10:10:00 [INFO] app.ui.main_window - Main window initialized on Windows
+2026-03-02 10:10:11 [INFO] app.ui.main_window - Feature not implemented yet
+2026-03-02 10:10:16 [INFO] app.ui.main_window - Feature not implemented yet
+2026-03-02 10:10:43 [INFO] app.ui.main_window - Feature not implemented yet
+2026-03-02 15:44:02 [INFO] app.ui.main_window - Closing application
+2026-03-02 15:44:02 [INFO] __main__ - Application shutting down
