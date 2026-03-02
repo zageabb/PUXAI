@@ -25,6 +25,8 @@ class AppConfig:
         enable_outlook: Flag indicating whether Outlook integration is enabled.
         enable_history_panel: Flag indicating whether the history panel is visible.
         enable_tray_icon: Flag indicating whether the system tray icon is enabled.
+        window_mode: Initial window mode (``full`` or ``menu_only``).
+        transparent_background: Flag to request a transparent window background.
         chatgpt_api_key_env_var: Environment variable name holding the ChatGPT API key.
         chatgpt_model: Default model identifier for ChatGPT interactions.
         chatgpt_timeout_seconds: Timeout in seconds for ChatGPT requests.
@@ -48,6 +50,8 @@ class AppConfig:
     enable_outlook: bool = True
     enable_history_panel: bool = True
     enable_tray_icon: bool = True
+    window_mode: str = "menu_only"
+    transparent_background: bool = False
 
     chatgpt_api_key_env_var: str = "OPENAI_API_KEY"
     chatgpt_model: str = "gpt-4.1-mini"
@@ -102,6 +106,13 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
     enable_tray_icon = _getboolean(
         parser, "features", "enable_tray_icon", AppConfig.enable_tray_icon
     )
+    window_mode = parser.get("features", "window_mode", fallback=AppConfig.window_mode)
+    transparent_background = _getboolean(
+        parser,
+        "features",
+        "transparent_background",
+        AppConfig.transparent_background,
+    )
 
     chatgpt_api_key_env_var = parser.get(
         "chatgpt", "api_key_env_var", fallback=AppConfig.chatgpt_api_key_env_var
@@ -143,6 +154,8 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
         enable_outlook=enable_outlook,
         enable_history_panel=enable_history_panel,
         enable_tray_icon=enable_tray_icon,
+        window_mode=window_mode,
+        transparent_background=transparent_background,
         chatgpt_api_key_env_var=chatgpt_api_key_env_var,
         chatgpt_model=chatgpt_model,
         chatgpt_timeout_seconds=chatgpt_timeout_seconds,
@@ -158,4 +171,3 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
 
     LOGGER.debug("Configuration loaded: %s", config)
     return config
-

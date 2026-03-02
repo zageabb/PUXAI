@@ -20,13 +20,33 @@ class MainWindow:
         self.os_name = os_name
 
         self.root.title(self.config.app_name)
-        self.root.geometry("900x600")
+        self._configure_window()
 
         self._build_menu()
-        self._build_content()
+        if self.config.window_mode != "menu_only":
+            self._build_content()
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         LOGGER.info("Main window initialized on %s", self.os_name)
+
+    def _configure_window(self) -> None:
+        window_mode = self.config.window_mode.lower().strip()
+        if window_mode == "menu_only":
+            self.root.geometry("420x80")
+            self.root.minsize(320, 60)
+        else:
+            self.root.geometry("900x600")
+
+        if self.config.transparent_background:
+            self._try_enable_transparent_background()
+
+    def _try_enable_transparent_background(self) -> None:
+        # Tk transparency support depends heavily on OS/window manager.
+        try:
+            self.root.wm_attributes("-alpha", 0.9)
+            LOGGER.info("Enabled translucent background with alpha 0.9")
+        except tk.TclError:
+            LOGGER.warning("Transparent background is not supported on this platform")
 
     def _build_menu(self) -> None:
         menu_bar = tk.Menu(self.root)
@@ -99,4 +119,3 @@ class MainWindow:
     def on_close(self) -> None:
         LOGGER.info("Closing application")
         self.root.destroy()
-
