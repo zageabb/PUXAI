@@ -8,7 +8,9 @@ import tkinter as tk
 from enum import Enum
 
 from app.config import AppConfig, load_config
+from app.launchers import create_launcher
 from app.logging_setup import setup_logging
+from app.session_history import get_history_file
 from app.ui.main_window import MainWindow
 
 
@@ -41,6 +43,9 @@ def main() -> None:
     setup_logging(config.app_name)
 
     os_name = detect_os()
+    launcher = create_launcher(os_name.value)
+    history_file = get_history_file(config.data_dir)
+
     LOGGER.info("Starting %s on %s", config.app_name, os_name.value)
     LOGGER.debug(
         "Feature flags: AI=%s, Tasks=%s, Notes=%s, Outlook=%s, Tray=%s",
@@ -52,7 +57,13 @@ def main() -> None:
     )
 
     root = tk.Tk()
-    MainWindow(root=root, config=config, os_name=os_name.value)
+    MainWindow(
+        root=root,
+        config=config,
+        os_name=os_name.value,
+        launcher=launcher,
+        history_file=history_file,
+    )
 
     try:
         root.mainloop()

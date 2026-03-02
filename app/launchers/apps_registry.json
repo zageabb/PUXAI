@@ -1,0 +1,42 @@
+{
+  "windows": [
+    {
+      "id": "notepad",
+      "name": "Notepad",
+      "category": "Utilities",
+      "command": ["notepad.exe"]
+    },
+    {
+      "id": "calculator",
+      "name": "Calculator",
+      "category": "Utilities",
+      "command": ["calc.exe"]
+    },
+    {
+      "id": "explorer",
+      "name": "File Explorer",
+      "category": "System",
+      "command": ["explorer.exe"]
+    }
+  ],
+  "linux": [
+    {
+      "id": "terminal",
+      "name": "Terminal",
+      "category": "Utilities",
+      "command": ["x-terminal-emulator"]
+    },
+    {
+      "id": "files",
+      "name": "Files",
+      "category": "System",
+      "command": ["xdg-open", "."]
+    },
+    {
+      "id": "calculator",
+      "name": "Calculator",
+      "category": "Utilities",
+      "command": ["gnome-calculator"]
+    }
+  ]
+}
