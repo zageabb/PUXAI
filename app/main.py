@@ -60,9 +60,12 @@ def main() -> None:
         LOGGER.info("Application interrupted by user")
     finally:
         LOGGER.info("Application shutting down")
-        root.destroy()
+        try:
+            if root.winfo_exists():
+                root.destroy()
+        except tk.TclError:
+            LOGGER.debug("Tk root already destroyed during shutdown")
 
 
 if __name__ == "__main__":
     main()
-
