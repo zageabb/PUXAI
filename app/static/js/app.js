@@ -46,3 +46,48 @@ if (chatForm && chatMessage) {
     }
   });
 }
+
+let draggedTaskId = null;
+
+document.querySelectorAll("[data-task-id]").forEach((card) => {
+  card.addEventListener("dragstart", () => {
+    draggedTaskId = card.dataset.taskId;
+    card.classList.add("is-dragging");
+  });
+  card.addEventListener("dragend", () => {
+    card.classList.remove("is-dragging");
+    draggedTaskId = null;
+  });
+});
+
+document.querySelectorAll("[data-dropzone]").forEach((zone) => {
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("dropzone-active");
+  });
+  zone.addEventListener("dragleave", () => {
+    zone.classList.remove("dropzone-active");
+  });
+  zone.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    zone.classList.remove("dropzone-active");
+    if (!draggedTaskId) {
+      return;
+    }
+    const status = zone.dataset.dropzone;
+    try {
+      const response = await fetch(`/api/tasks/${draggedTaskId}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const payload = await response.json();
+      if (!payload.ok) {
+        throw new Error(payload.message || "Move failed.");
+      }
+      window.location.reload();
+    } catch (error) {
+      window.alert(`Task move failed: ${error}`);
+    }
+  });
+});

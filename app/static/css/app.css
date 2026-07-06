@@ -210,6 +210,7 @@ pre {
 .kanban-task-stack {
   display: grid;
   gap: 0.85rem;
+  min-height: 6rem;
 }
 
 .task-card,
@@ -217,6 +218,20 @@ pre {
 .run-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 252, 0.94));
   padding: 1rem;
+}
+
+.task-card {
+  cursor: grab;
+}
+
+.task-card.is-dragging {
+  opacity: 0.55;
+}
+
+.dropzone-active {
+  outline: 2px dashed rgba(31, 102, 115, 0.45);
+  outline-offset: 6px;
+  border-radius: 1rem;
 }
 
 .task-card-top {
@@ -272,6 +287,17 @@ pre {
   color: var(--brand);
 }
 
+.drag-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(20, 56, 76, 0.08);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.24rem 0.6rem;
+}
+
 .priority-pill {
   background: #e8edf1;
   color: #375166;
@@ -322,6 +348,18 @@ pre {
   margin-bottom: 0.75rem;
 }
 
+.executor-notes {
+  border-top: 1px dashed rgba(16, 34, 48, 0.12);
+  padding-top: 0.75rem;
+}
+
+.task-action-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+  margin: 0.85rem 0;
+}
+
 .task-mermaid,
 .source-toggle {
   margin: 0.85rem 0;
@@ -346,6 +384,10 @@ pre {
   gap: 1rem;
 }
 
+.compact-stack {
+  gap: 0.7rem;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -365,6 +407,11 @@ pre {
   border-radius: 1rem;
   padding: 1rem;
   overflow-x: auto;
+}
+
+.compact-code {
+  white-space: pre-wrap;
+  font-size: 0.8rem;
 }
 
 .chat-panel {
@@ -430,6 +477,90 @@ pre {
   gap: 0.85rem;
 }
 
+.task-detail-shell {
+  margin-top: 0.8rem;
+  border-top: 1px dashed rgba(16, 34, 48, 0.14);
+  padding-top: 0.8rem;
+}
+
+.task-detail-shell summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--brand);
+}
+
+.task-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.task-detail-panel,
+.artifact-preview-card,
+.document-mini-card {
+  border: 1px solid rgba(16, 34, 48, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.task-detail-panel {
+  padding: 0.9rem;
+}
+
+.context-block {
+  margin-top: 0.8rem;
+}
+
+.file-pill-grid {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.45rem;
+}
+
+.file-pill {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: rgba(20, 56, 76, 0.08);
+  color: var(--brand);
+  font-size: 0.75rem;
+}
+
+.document-mini-card {
+  padding: 0.7rem 0.8rem;
+  margin-top: 0.55rem;
+}
+
+.executor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.45rem;
+}
+
+.task-artifact-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.board-artifacts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.artifact-preview-card {
+  padding: 0.9rem;
+}
+
+.mermaid-editor {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.82rem;
+}
+
 .launcher-tile {
   width: 100%;
   text-align: left;
@@ -466,6 +597,12 @@ pre {
 @media (max-width: 1200px) {
   .layout-grid,
   .two-up-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-detail-grid,
+  .task-artifact-preview-grid,
+  .board-artifacts {
     grid-template-columns: 1fr;
   }
 

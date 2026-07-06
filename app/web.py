@@ -12,9 +12,11 @@ from app.config import AppConfig
 from app.launchers import BaseLauncher
 from app.session_history import append_launch_event
 from app.services.agent_service import board_chat_reply, draft_task_with_ai, record_agent_run, run_task_agent
-from app.services.board_store import BoardStore, new_id, utc_now
-from app.services.mermaid_service import build_kanban_mermaid
+from app.services.board_store import BoardStore, default_mermaid_artifacts, default_repo_context, new_id, utc_now
+from app.services.executor_service import execute_task_action, record_executor_run
+from app.services.mermaid_service import build_kanban_mermaid, build_stitched_board_mermaid
 from app.services.ollama_client import OllamaClient
+from app.services.repo_context_service import ingest_repository_context
 
 LOGGER = logging.getLogger(__name__)
 
@@ -46,15 +48,15 @@ def create_app(
             "os_name": os_name,
             "launchable_apps": launcher.list_apps() if launcher else [],
             "ollama_status": ollama_status,
-            "board_preview_mermaid": board.get("board_mermaid") or build_kanban_mermaid(board),
+            "board_kanban_mermaid": board.get("board_mermaid_artifacts", {}).get("kanban", ""),
+            "board_stitched_mermaid": board.get("board_mermaid_artifacts", {}).get("stitched", ""),
         }
 
     @app.get("/")
     def index() -> str:
         board = _board_store(app).load()
-        if not board.get("board_mermaid"):
-            board["board_mermaid"] = build_kanban_mermaid(board)
-            _board_store(app).save(board)
+        _refresh_mermaid(app)
+        board = _board_store(app).load()
         return render_template(
             "index.html",
             board=board,
@@ -87,10 +89,14 @@ def create_app(
             "owner": owner,
             "checklist": [],
             "agent_brief": "",
-            "mermaid_code": "",
             "latest_agent_notes": "",
             "created_at": utc_now(),
             "updated_at": utc_now(),
+            "mermaid_artifacts": default_mermaid_artifacts(),
+            "repo_context": default_repo_context(),
+            "executor_runs": [],
+            "last_executor_action": "",
+            "last_executor_notes": "",
         }
 
         if ai_enrich and config.enable_ai:
@@ -108,7 +114,11 @@ def create_app(
                         if str(item).strip()
                     ]
                     task["agent_brief"] = ai_payload.get("agent_brief", "")
-                    task["mermaid_code"] = ai_payload.get("mermaid_code", "")
+                    task["mermaid_artifacts"] = {
+                        **task["mermaid_artifacts"],
+                        **(ai_payload.get("mermaid_artifacts", {}) or {}),
+                    }
+                    task["repo_context"]["notes"] = str(ai_payload.get("repo_context_notes", "")).strip()
 
         _board_store(app).add_task(task)
         _refresh_mermaid(app)
@@ -122,14 +132,89 @@ def create_app(
         if status not in board["statuses"]:
             flash("Unknown status.", "warning")
             return redirect(url_for("index"))
-        _board_store(app).update_task(task_id, {"status": status})
+        _move_task_to_status(app, task_id, status)
+        return redirect(url_for("index"))
+
+    @app.post("/api/tasks/<task_id>/move")
+    def api_move_task(task_id: str) -> Any:
+        board = _board_store(app).load()
+        payload = request.get_json(force=True)
+        status = str(payload.get("status", "")).strip()
+        if status not in board["statuses"]:
+            return jsonify({"ok": False, "message": "Unknown status."}), 400
+        _move_task_to_status(app, task_id, status)
+        return jsonify({"ok": True, "status": status})
+
+    @app.post("/tasks/<task_id>/artifacts")
+    def update_task_artifacts(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            flash("Task not found.", "warning")
+            return redirect(url_for("index"))
+        artifacts = {
+            "architecture": request.form.get("architecture", "").strip(),
+            "flow": request.form.get("flow", "").strip(),
+            "kanban_subview": request.form.get("kanban_subview", "").strip(),
+        }
+        _board_store(app).update_task(task_id, {"mermaid_artifacts": {**task["mermaid_artifacts"], **artifacts}})
         _refresh_mermaid(app)
+        flash(f"Saved Mermaid artifacts for '{task['title']}'.", "success")
+        return redirect(url_for("index"))
+
+    @app.post("/tasks/<task_id>/repo-context")
+    def update_repo_context(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            flash("Task not found.", "warning")
+            return redirect(url_for("index"))
+        repo_path = request.form.get("repo_path", "").strip()
+        focus_patterns = request.form.get("focus_patterns", "").strip() or "*.py,*.md,*.json"
+        notes = request.form.get("repo_notes", "").strip()
+        if not repo_path:
+            flash("Repository path is required to ingest context.", "warning")
+            return redirect(url_for("index"))
+        try:
+            context = ingest_repository_context(repo_path, focus_patterns, notes)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.exception("Repo context ingestion failed")
+            flash(f"Repo context ingestion failed: {exc}", "danger")
+            return redirect(url_for("index"))
+        _board_store(app).update_task(task_id, {"repo_context": context})
+        _refresh_mermaid(app)
+        flash(f"Ingested repo context for '{task['title']}'.", "success")
+        return redirect(url_for("index"))
+
+    @app.post("/tasks/<task_id>/executor")
+    def run_executor(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            flash("Task not found.", "warning")
+            return redirect(url_for("index"))
+        action = request.form.get("action", "").strip()
+        try:
+            result = execute_task_action(task, action)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.exception("Executor action failed")
+            flash(f"Executor action failed: {exc}", "danger")
+            return redirect(url_for("index"))
+
+        patch = dict(result.get("task_patch", {}))
+        if patch:
+            _board_store(app).update_task(task_id, patch)
+        run = record_executor_run(task_id, action, result.get("summary", action), result)
+        _board_store(app).append_task_run(task_id, run)
+        _board_store(app).append_agent_run(run)
+        _refresh_mermaid(app)
+        flash(result.get("summary", f"Executed {action}."), "success")
         return redirect(url_for("index"))
 
     @app.post("/tasks/<task_id>/agent")
     def task_agent(task_id: str) -> Any:
         board = _board_store(app).load()
-        task = next((item for item in board["tasks"] if item["id"] == task_id), None)
+        task = _find_task(board, task_id)
         if task is None:
             flash("Task not found.", "warning")
             return redirect(url_for("index"))
@@ -152,8 +237,15 @@ def create_app(
             for item in payload.get("checklist", [])
             if str(item).strip()
         ] or task.get("checklist", [])
-        merged_labels = sorted({*task.get("labels", []), *[str(label).strip() for label in payload.get("labels", []) if str(label).strip()]})
+        merged_labels = sorted(
+            {
+                *task.get("labels", []),
+                *[str(label).strip() for label in payload.get("labels", []) if str(label).strip()],
+            }
+        )
+        artifact_patch = payload.get("mermaid_artifacts", {}) or {}
         notes = payload.get("notes", "")
+        executor_action = str(payload.get("executor_action", "")).strip()
         _board_store(app).update_task(
             task_id,
             {
@@ -161,9 +253,10 @@ def create_app(
                 "summary": payload.get("summary", task["summary"]),
                 "checklist": checklist,
                 "labels": merged_labels,
-                "mermaid_code": payload.get("mermaid_code", task.get("mermaid_code", "")),
+                "mermaid_artifacts": {**task.get("mermaid_artifacts", {}), **artifact_patch},
                 "latest_agent_notes": notes,
                 "agent_brief": payload.get("next_step", task.get("agent_brief", "")),
+                "last_executor_action": executor_action if executor_action and executor_action != "none" else task.get("last_executor_action", ""),
             },
         )
         run = record_agent_run(task_id, "task-agent", payload.get("summary", task["title"]), payload)
@@ -176,7 +269,7 @@ def create_app(
     def toggle_check(task_id: str) -> Any:
         board = _board_store(app).load()
         item_index = int(request.form.get("item_index", "-1"))
-        task = next((item for item in board["tasks"] if item["id"] == task_id), None)
+        task = _find_task(board, task_id)
         if task is None or item_index < 0 or item_index >= len(task.get("checklist", [])):
             flash("Checklist item not found.", "warning")
             return redirect(url_for("index"))
@@ -214,7 +307,7 @@ def create_app(
     @app.post("/board/refresh-mermaid")
     def refresh_mermaid() -> Any:
         _refresh_mermaid(app)
-        flash("Board Mermaid view refreshed.", "success")
+        flash("Board Mermaid views refreshed.", "success")
         return redirect(url_for("index"))
 
     @app.post("/api/chat")
@@ -289,7 +382,19 @@ def _tasks_by_status(board: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return grouped
 
 
+def _find_task(board: dict[str, Any], task_id: str) -> dict[str, Any] | None:
+    return next((item for item in board.get("tasks", []) if item["id"] == task_id), None)
+
+
+def _move_task_to_status(app: Flask, task_id: str, status: str) -> None:
+    _board_store(app).update_task(task_id, {"status": status})
+    _refresh_mermaid(app)
+
+
 def _refresh_mermaid(app: Flask) -> None:
     board = _board_store(app).load()
-    board["board_mermaid"] = build_kanban_mermaid(board)
+    board["board_mermaid_artifacts"] = {
+        "kanban": build_kanban_mermaid(board),
+        "stitched": build_stitched_board_mermaid(board),
+    }
     _board_store(app).save(board)
