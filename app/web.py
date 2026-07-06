@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 import logging
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, send_from_directory, url_for
+from werkzeug.utils import secure_filename
 
 from app.config import AppConfig
 from app.launchers import BaseLauncher
@@ -62,6 +64,19 @@ def create_app(
             board=board,
             tasks_by_status=_tasks_by_status(board),
             os_name=os_name,
+        )
+
+    @app.get("/tasks/<task_id>/edit")
+    def edit_task(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            abort(404)
+        return render_template(
+            "task_edit.html",
+            board=board,
+            task=task,
+            checklist_text=_checklist_to_text(task.get("checklist", [])),
         )
 
     @app.post("/tasks")
@@ -162,6 +177,40 @@ def create_app(
         flash(f"Saved Mermaid artifacts for '{task['title']}'.", "success")
         return redirect(url_for("index"))
 
+    @app.post("/tasks/<task_id>/edit")
+    def save_task_edit(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            flash("Task not found.", "warning")
+            return redirect(url_for("index"))
+
+        labels = [item.strip() for item in request.form.get("labels", "").split(",") if item.strip()]
+        patch = {
+            "title": request.form.get("title", task["title"]).strip() or task["title"],
+            "summary": request.form.get("summary", task["summary"]).strip(),
+            "status": request.form.get("status", task["status"]).strip(),
+            "priority": request.form.get("priority", task["priority"]).strip(),
+            "owner": request.form.get("owner", task["owner"]).strip() or task["owner"],
+            "labels": labels,
+            "notes": request.form.get("notes", task.get("notes", "")).strip(),
+            "agent_brief": request.form.get("agent_brief", task.get("agent_brief", "")).strip(),
+            "checklist": _parse_checklist_text(request.form.get("checklist_text", "")),
+            "mermaid_artifacts": {
+                "architecture": request.form.get("architecture", task["mermaid_artifacts"].get("architecture", "")).strip(),
+                "flow": request.form.get("flow", task["mermaid_artifacts"].get("flow", "")).strip(),
+                "kanban_subview": request.form.get("kanban_subview", task["mermaid_artifacts"].get("kanban_subview", "")).strip(),
+                "sequence": request.form.get("sequence", task["mermaid_artifacts"].get("sequence", "")).strip(),
+                "mindmap": request.form.get("mindmap", task["mermaid_artifacts"].get("mindmap", "")).strip(),
+            },
+        }
+        if patch["status"] not in board["statuses"]:
+            patch["status"] = task["status"]
+        _board_store(app).update_task(task_id, patch)
+        _refresh_mermaid(app)
+        flash(f"Saved task workspace for '{patch['title']}'.", "success")
+        return redirect(url_for("edit_task", task_id=task_id))
+
     @app.post("/tasks/<task_id>/repo-context")
     def update_repo_context(task_id: str) -> Any:
         board = _board_store(app).load()
@@ -184,7 +233,85 @@ def create_app(
         _board_store(app).update_task(task_id, {"repo_context": context})
         _refresh_mermaid(app)
         flash(f"Ingested repo context for '{task['title']}'.", "success")
-        return redirect(url_for("index"))
+        return redirect(request.form.get("next") or url_for("index"))
+
+    @app.post("/tasks/<task_id>/upload")
+    def upload_task_file(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            flash("Task not found.", "warning")
+            return redirect(url_for("index"))
+        uploaded = request.files.get("attachment")
+        if uploaded is None or not uploaded.filename:
+            flash("Choose a file to attach.", "warning")
+            return redirect(url_for("edit_task", task_id=task_id))
+        filename = secure_filename(uploaded.filename)
+        if not filename:
+            flash("Attachment filename was not valid.", "warning")
+            return redirect(url_for("edit_task", task_id=task_id))
+        task_dir = _task_files_dir(app, task_id)
+        task_dir.mkdir(parents=True, exist_ok=True)
+        destination = task_dir / filename
+        uploaded.save(destination)
+        attachments = list(task.get("attachments", []))
+        attachments.append(
+            {
+                "filename": filename,
+                "stored_path": str(destination),
+                "size_bytes": destination.stat().st_size,
+                "uploaded_at": utc_now(),
+            }
+        )
+        _board_store(app).update_task(task_id, {"attachments": attachments})
+        flash(f"Attached {filename}.", "success")
+        return redirect(url_for("edit_task", task_id=task_id))
+
+    @app.get("/tasks/<task_id>/files/<filename>")
+    def task_file_download(task_id: str, filename: str) -> Any:
+        task_dir = _task_files_dir(app, task_id)
+        return send_from_directory(task_dir, filename, as_attachment=True)
+
+    @app.post("/tasks/<task_id>/email-draft")
+    def create_email_draft(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            flash("Task not found.", "warning")
+            return redirect(url_for("index"))
+        draft_type = request.form.get("draft_type", "rfq").strip() or "rfq"
+        recipient = request.form.get("recipient", "").strip()
+        subject = _draft_subject(task, draft_type)
+        body = _draft_body(task, draft_type)
+        drafts = list(task.get("email_drafts", []))
+        drafts.insert(
+            0,
+            {
+                "id": new_id(),
+                "type": draft_type,
+                "recipient": recipient,
+                "subject": subject,
+                "body": body,
+                "created_at": utc_now(),
+            },
+        )
+        _board_store(app).update_task(task_id, {"email_drafts": drafts[:10]})
+        flash(f"Created {draft_type.upper()} email draft for '{task['title']}'.", "success")
+        return redirect(url_for("edit_task", task_id=task_id))
+
+    @app.get("/tasks/<task_id>/rfq-download")
+    def download_rfq_brief(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            abort(404)
+        content = _build_rfq_markdown(task)
+        return send_file(
+            BytesIO(content.encode("utf-8")),
+            as_attachment=True,
+            download_name=f"{secure_filename(task['title']) or 'task'}-rfq.md",
+            mimetype="text/markdown",
+        )
 
     @app.post("/tasks/<task_id>/executor")
     def run_executor(task_id: str) -> Any:
@@ -209,7 +336,7 @@ def create_app(
         _board_store(app).append_agent_run(run)
         _refresh_mermaid(app)
         flash(result.get("summary", f"Executed {action}."), "success")
-        return redirect(url_for("index"))
+        return redirect(request.form.get("next") or url_for("index"))
 
     @app.post("/tasks/<task_id>/agent")
     def task_agent(task_id: str) -> Any:
@@ -263,7 +390,7 @@ def create_app(
         _board_store(app).append_agent_run(run)
         _refresh_mermaid(app)
         flash(f"Agent run completed for '{task['title']}'.", "success")
-        return redirect(url_for("index"))
+        return redirect(request.form.get("next") or url_for("index"))
 
     @app.post("/tasks/<task_id>/toggle-check")
     def toggle_check(task_id: str) -> Any:
@@ -384,6 +511,92 @@ def _tasks_by_status(board: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
 
 def _find_task(board: dict[str, Any], task_id: str) -> dict[str, Any] | None:
     return next((item for item in board.get("tasks", []) if item["id"] == task_id), None)
+
+
+def _task_files_dir(app: Flask, task_id: str) -> Path:
+    return Path(app.config["APP_CONFIG"].data_dir) / "task_files" / task_id
+
+
+def _checklist_to_text(items: list[dict[str, Any]]) -> str:
+    lines = []
+    for item in items:
+        marker = "x" if item.get("done") else " "
+        lines.append(f"- [{marker}] {item.get('text', '').strip()}")
+    return "\n".join(lines)
+
+
+def _parse_checklist_text(raw_text: str) -> list[dict[str, Any]]:
+    checklist: list[dict[str, Any]] = []
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        done = line.startswith("- [x]") or line.startswith("* [x]") or line.startswith("[x]")
+        cleaned = (
+            line.replace("- [x]", "")
+            .replace("- [ ]", "")
+            .replace("* [x]", "")
+            .replace("* [ ]", "")
+            .replace("[x]", "")
+            .replace("[ ]", "")
+            .strip()
+        )
+        if cleaned:
+            checklist.append({"text": cleaned, "done": done})
+    return checklist
+
+
+def _draft_subject(task: dict[str, Any], draft_type: str) -> str:
+    if draft_type == "rfq":
+        return f"RFQ: {task['title']}"
+    if draft_type == "status":
+        return f"Status update: {task['title']}"
+    return f"PUXAI task: {task['title']}"
+
+
+def _draft_body(task: dict[str, Any], draft_type: str) -> str:
+    selected_files = task.get("repo_context", {}).get("selected_files", [])[:5]
+    file_list = "\n".join(f"- {path}" for path in selected_files) or "- No files linked yet"
+    checklist_text = "\n".join(
+        f"- {item['text']}" for item in task.get("checklist", []) if item.get("text")
+    ) or "- No checklist items yet"
+    if draft_type == "status":
+        return (
+            f"Task: {task['title']}\n\n"
+            f"Summary:\n{task.get('summary', '')}\n\n"
+            f"Status: {task.get('status', '')}\n"
+            f"Priority: {task.get('priority', '')}\n\n"
+            f"Checklist:\n{checklist_text}\n\n"
+            f"Notes:\n{task.get('notes', '')}"
+        )
+    return (
+        f"Hello,\n\n"
+        f"We would like to request information/quotation support for the following task:\n\n"
+        f"Task: {task['title']}\n"
+        f"Summary: {task.get('summary', '')}\n\n"
+        f"Linked files:\n{file_list}\n\n"
+        f"Requested actions:\n{checklist_text}\n\n"
+        f"Notes:\n{task.get('notes', '')}\n\n"
+        "Thanks."
+    )
+
+
+def _build_rfq_markdown(task: dict[str, Any]) -> str:
+    artifacts = task.get("mermaid_artifacts", {})
+    attachments = task.get("attachments", [])
+    files = "\n".join(f"- {item['filename']}" for item in attachments) or "- No attachments"
+    checklist = "\n".join(
+        f"- [{'x' if item.get('done') else ' '}] {item.get('text', '')}" for item in task.get("checklist", [])
+    ) or "- No checklist items"
+    return (
+        f"# RFQ Brief: {task['title']}\n\n"
+        f"## Summary\n{task.get('summary', '')}\n\n"
+        f"## Status\n- Status: {task.get('status', '')}\n- Priority: {task.get('priority', '')}\n- Owner: {task.get('owner', '')}\n\n"
+        f"## Notes\n{task.get('notes', '') or 'No notes'}\n\n"
+        f"## Checklist\n{checklist}\n\n"
+        f"## Attachments\n{files}\n\n"
+        f"## Mermaid Flow\n```mermaid\n{artifacts.get('flow', '')}\n```\n"
+    )
 
 
 def _move_task_to_status(app: Flask, task_id: str, status: str) -> None:

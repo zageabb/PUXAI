@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ task.title }}{% endblock %}
+
+{% block content %}
+  <div class="task-edit-shell">
+    <div class="task-edit-header glass-panel p-4 mb-4">
+      <div>
+        <div class="section-kicker">Task Workspace</div>
+        <h1 class="display-title task-edit-title">{{ task.title }}</h1>
+        <p class="hero-copy task-edit-copy">{{ task.summary }}</p>
+      </div>
+      <div class="task-edit-actions">
+        <a class="btn btn-outline-dark" href="{{ url_for('index') }}">Back to board</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('download_rfq_brief', task_id=task.id) }}">Download RFQ brief</a>
+      </div>
+    </div>
+
+    <div class="task-edit-grid">
+      <main class="task-edit-main">
+        <section class="glass-panel p-4 mb-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Editable Task</div>
+              <h2>Core details, notes, checklist, and Mermaid</h2>
+            </div>
+          </div>
+          <form action="{{ url_for('save_task_edit', task_id=task.id) }}" method="post" class="stack-form">
+            <div class="form-grid">
+              <div>
+                <label class="form-label">Title</label>
+                <input class="form-control" type="text" name="title" value="{{ task.title }}">
+              </div>
+              <div>
+                <label class="form-label">Owner</label>
+                <input class="form-control" type="text" name="owner" value="{{ task.owner }}">
+              </div>
+              <div>
+                <label class="form-label">Status</label>
+                <select class="form-select" name="status">
+                  {% for status in board.statuses %}
+                    <option value="{{ status }}" {% if status == task.status %}selected{% endif %}>{{ status }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">Priority</label>
+                <select class="form-select" name="priority">
+                  {% for priority in ["High", "Medium", "Low"] %}
+                    <option value="{{ priority }}" {% if priority == task.priority %}selected{% endif %}>{{ priority }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">Labels</label>
+              <input class="form-control" type="text" name="labels" value="{{ task.labels|join(', ') }}">
+            </div>
+            <div>
+              <label class="form-label">Summary</label>
+              <textarea class="form-control" name="summary" rows="4">{{ task.summary }}</textarea>
+            </div>
+            <div>
+              <label class="form-label">Agent brief</label>
+              <textarea class="form-control" name="agent_brief" rows="3">{{ task.agent_brief }}</textarea>
+            </div>
+            <div>
+              <label class="form-label">Notes</label>
+              <textarea class="form-control" name="notes" rows="6">{{ task.notes }}</textarea>
+            </div>
+            <div>
+              <label class="form-label">Checklist</label>
+              <textarea class="form-control mermaid-editor" name="checklist_text" rows="8">{{ checklist_text }}</textarea>
+            </div>
+            <div class="task-mermaid-form-grid">
+              <div>
+                <label class="form-label">Architecture Mermaid</label>
+                <textarea class="form-control mermaid-editor" name="architecture" rows="8">{{ task.mermaid_artifacts.architecture }}</textarea>
+              </div>
+              <div>
+                <label class="form-label">Flow Mermaid</label>
+                <textarea class="form-control mermaid-editor" name="flow" rows="8">{{ task.mermaid_artifacts.flow }}</textarea>
+              </div>
+              <div>
+                <label class="form-label">Kanban subview</label>
+                <textarea class="form-control mermaid-editor" name="kanban_subview" rows="7">{{ task.mermaid_artifacts.kanban_subview }}</textarea>
+              </div>
+              <div>
+                <label class="form-label">Sequence</label>
+                <textarea class="form-control mermaid-editor" name="sequence" rows="7">{{ task.mermaid_artifacts.sequence }}</textarea>
+              </div>
+              <div>
+                <label class="form-label">Mindmap</label>
+                <textarea class="form-control mermaid-editor" name="mindmap" rows="7">{{ task.mermaid_artifacts.mindmap }}</textarea>
+              </div>
+            </div>
+            <button class="btn btn-primary" type="submit">Save task workspace</button>
+          </form>
+        </section>
+
+        <section class="glass-panel p-4 mb-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">File Handling</div>
+              <h2>Attach files and link repo context</h2>
+            </div>
+          </div>
+          <div class="two-up-grid">
+            <form action="{{ url_for('upload_task_file', task_id=task.id) }}" method="post" enctype="multipart/form-data" class="stack-form">
+              <div>
+                <label class="form-label">Attachment</label>
+                <input class="form-control" type="file" name="attachment">
+              </div>
+              <button class="btn btn-outline-dark" type="submit">Upload file</button>
+            </form>
+            <form action="{{ url_for('update_repo_context', task_id=task.id) }}" method="post" class="stack-form">
+              <input type="hidden" name="next" value="{{ url_for('edit_task', task_id=task.id) }}">
+              <div>
+                <label class="form-label">Repository path</label>
+                <input class="form-control" type="text" name="repo_path" value="{{ task.repo_context.repo_path }}">
+              </div>
+              <div>
+                <label class="form-label">Focus patterns</label>
+                <input class="form-control" type="text" name="focus_patterns" value="{{ task.repo_context.focus_patterns }}">
+              </div>
+              <div>
+                <label class="form-label">Repo notes</label>
+                <textarea class="form-control" name="repo_notes" rows="3">{{ task.repo_context.notes }}</textarea>
+              </div>
+              <button class="btn btn-outline-dark" type="submit">Refresh repo context</button>
+            </form>
+          </div>
+          <div class="task-edit-grid-mini mt-4">
+            <div class="artifact-preview-card">
+              <div class="mini-label">Attachments</div>
+              {% if task.attachments %}
+                <div class="file-pill-grid">
+                  {% for attachment in task.attachments %}
+                    <a class="file-pill" href="{{ url_for('task_file_download', task_id=task.id, filename=attachment.filename) }}">{{ attachment.filename }}</a>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="small text-muted mb-0">No attachments yet.</p>
+              {% endif %}
+            </div>
+            <div class="artifact-preview-card">
+              <div class="mini-label">Repo summary</div>
+              <pre class="code-block compact-code">{{ task.repo_context.summary or "No repo context yet." }}</pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Mermaid Preview</div>
+              <h2>Additional flows and task visuals</h2>
+            </div>
+          </div>
+          <div class="task-artifact-preview-grid">
+            {% for artifact_name, artifact_body in task.mermaid_artifacts.items() %}
+              {% if artifact_body %}
+                <div class="artifact-preview-card">
+                  <div class="mini-label">{{ artifact_name.replace('_', ' ') }}</div>
+                  <pre class="mermaid">{{ artifact_body }}</pre>
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </section>
+      </main>
+
+      <aside class="task-edit-side">
+        <section class="glass-panel p-4 mb-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Email Actions</div>
+              <h2>Drafts and RFQ flows</h2>
+            </div>
+          </div>
+          <form action="{{ url_for('create_email_draft', task_id=task.id) }}" method="post" class="stack-form">
+            <div>
+              <label class="form-label">Recipient</label>
+              <input class="form-control" type="text" name="recipient" placeholder="supplier@example.com">
+            </div>
+            <div>
+              <label class="form-label">Draft type</label>
+              <select class="form-select" name="draft_type">
+                <option value="rfq">RFQ</option>
+                <option value="status">Status update</option>
+              </select>
+            </div>
+            <button class="btn btn-outline-primary" type="submit">Create email draft</button>
+          </form>
+          <div class="run-list mt-4">
+            {% for draft in task.email_drafts[:6] %}
+              <article class="run-card">
+                <div class="run-meta">{{ draft.type }} • {{ draft.created_at[:19].replace('T', ' ') }}</div>
+                <div class="run-summary">{{ draft.subject }}</div>
+                {% if draft.recipient %}<div class="small text-muted">{{ draft.recipient }}</div>{% endif %}
+                <pre class="code-block compact-code">{{ draft.body }}</pre>
+              </article>
+            {% else %}
+              <div class="empty-column-card">No email drafts yet.</div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="glass-panel p-4 mb-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Executor</div>
+              <h2>Safe local actions</h2>
+            </div>
+          </div>
+          <div class="executor-grid">
+            {% for action in task.executor_actions %}
+              <form action="{{ url_for('run_executor', task_id=task.id) }}" method="post">
+                <input type="hidden" name="next" value="{{ url_for('edit_task', task_id=task.id) }}">
+                <input type="hidden" name="action" value="{{ action }}">
+                <button class="btn btn-sm btn-outline-secondary w-100" type="submit">{{ action.replace('_', ' ') }}</button>
+              </form>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Execution Trace</div>
+              <h2>Recent runs</h2>
+            </div>
+          </div>
+          <div class="run-list">
+            {% for run in task.executor_runs[:8] %}
+              <article class="run-card">
+                <div class="run-meta">{{ run.kind }} • {{ run.created_at[:19].replace('T', ' ') }}</div>
+                <div class="run-summary">{{ run.summary }}</div>
+              </article>
+            {% else %}
+              <div class="empty-column-card">No executor runs yet.</div>
+            {% endfor %}
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+{% endblock %}

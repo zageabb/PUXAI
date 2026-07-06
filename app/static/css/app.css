@@ -126,6 +126,58 @@ pre {
   align-items: start;
 }
 
+.task-edit-shell {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.task-edit-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.task-edit-title {
+  color: var(--ink);
+  font-size: clamp(1.6rem, 3vw, 2.6rem);
+}
+
+.task-edit-copy {
+  color: var(--muted);
+  max-width: 48rem;
+}
+
+.task-edit-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.task-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.task-edit-main,
+.task-edit-side {
+  min-width: 0;
+}
+
+.task-mermaid-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.task-edit-grid-mini {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
 .glass-panel,
 .chat-panel,
 .task-card,
@@ -596,13 +648,16 @@ pre {
 
 @media (max-width: 1200px) {
   .layout-grid,
-  .two-up-grid {
+  .two-up-grid,
+  .task-edit-grid {
     grid-template-columns: 1fr;
   }
 
   .task-detail-grid,
   .task-artifact-preview-grid,
-  .board-artifacts {
+  .board-artifacts,
+  .task-mermaid-form-grid,
+  .task-edit-grid-mini {
     grid-template-columns: 1fr;
   }
 
@@ -614,7 +669,8 @@ pre {
 @media (max-width: 768px) {
   .hero-card,
   .section-heading,
-  .form-grid {
+  .form-grid,
+  .task-edit-header {
     grid-template-columns: 1fr;
     display: grid;
   }

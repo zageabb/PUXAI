@@ -87,6 +87,28 @@ def build_task_mermaid_artifacts(task: dict[str, Any]) -> dict[str, str]:
         "architecture": architecture,
         "flow": flow,
         "kanban_subview": kanban_subview,
+        "sequence": "\n".join(
+            [
+                "sequenceDiagram",
+                "    participant User",
+                "    participant PUXAI",
+                "    participant Executor",
+                f"    User->>PUXAI: {clean_text(task['title'])}",
+                "    PUXAI->>Executor: Run safe local action",
+                "    Executor-->>PUXAI: Return structured result",
+                "    PUXAI-->>User: Refresh task status and artifacts",
+            ]
+        ),
+        "mindmap": "\n".join(
+            [
+                "mindmap",
+                f"  root(({clean_text(task['title'])}))",
+                "    Repo context",
+                "    Mermaid artifacts",
+                "    Executor actions",
+                "    Email draft",
+            ]
+        ),
     }
 
 

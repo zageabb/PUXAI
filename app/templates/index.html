@@ -97,8 +97,10 @@
 
                       <div class="task-action-row">
                         <form action="{{ url_for('task_agent', task_id=task.id) }}" method="post" class="flex-fill">
+                          <input type="hidden" name="next" value="{{ url_for('index') }}">
                           <button class="btn btn-sm btn-outline-primary w-100" type="submit">Run agent</button>
                         </form>
+                        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('edit_task', task_id=task.id) }}">Edit</a>
                         <form action="{{ url_for('move_task', task_id=task.id) }}" method="post" class="compact-form">
                           <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
                             {% for option in board.statuses %}
@@ -115,6 +117,7 @@
                           <section class="task-detail-panel">
                             <div class="mini-label">Repo context</div>
                             <form action="{{ url_for('update_repo_context', task_id=task.id) }}" method="post" class="stack-form compact-stack">
+                              <input type="hidden" name="next" value="{{ url_for('index') }}">
                               <div>
                                 <label class="form-label">Repository path</label>
                                 <input class="form-control form-control-sm" type="text" name="repo_path" value="{{ task.repo_context.repo_path }}" placeholder="/path/to/repo">
@@ -183,6 +186,7 @@
                             <div class="executor-grid">
                               {% for action in task.executor_actions %}
                                 <form action="{{ url_for('run_executor', task_id=task.id) }}" method="post">
+                                  <input type="hidden" name="next" value="{{ url_for('index') }}">
                                   <input type="hidden" name="action" value="{{ action }}">
                                   <button class="btn btn-sm btn-outline-secondary w-100" type="submit">{{ action.replace('_', ' ') }}</button>
                                 </form>

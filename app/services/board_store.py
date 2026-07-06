@@ -30,6 +30,8 @@ def default_mermaid_artifacts() -> dict[str, str]:
         "architecture": "",
         "flow": "",
         "kanban_subview": "",
+        "sequence": "",
+        "mindmap": "",
     }
 
 
@@ -62,6 +64,7 @@ def default_task() -> dict[str, Any]:
         "checklist": [],
         "agent_brief": "",
         "latest_agent_notes": "",
+        "notes": "",
         "created_at": utc_now(),
         "updated_at": utc_now(),
         "mermaid_artifacts": default_mermaid_artifacts(),
@@ -70,6 +73,8 @@ def default_task() -> dict[str, Any]:
         "last_executor_action": "",
         "last_executor_notes": "",
         "executor_actions": list(DEFAULT_EXECUTOR_ACTIONS),
+        "attachments": [],
+        "email_drafts": [],
     }
 
 
@@ -225,12 +230,15 @@ def _normalize_task(raw_task: dict[str, Any], valid_statuses: list[str]) -> dict
         "checklist": list(raw_task.get("checklist", [])),
         "agent_brief": raw_task.get("agent_brief", "").strip(),
         "latest_agent_notes": raw_task.get("latest_agent_notes", "").strip(),
+        "notes": raw_task.get("notes", "").strip(),
         "created_at": raw_task.get("created_at", utc_now()),
         "updated_at": raw_task.get("updated_at", utc_now()),
         "executor_runs": list(raw_task.get("executor_runs", [])),
         "last_executor_action": str(raw_task.get("last_executor_action", "")),
         "last_executor_notes": str(raw_task.get("last_executor_notes", "")),
         "executor_actions": list(raw_task.get("executor_actions", DEFAULT_EXECUTOR_ACTIONS)),
+        "attachments": list(raw_task.get("attachments", [])),
+        "email_drafts": list(raw_task.get("email_drafts", [])),
     }
     if task["status"] not in valid_statuses:
         task["status"] = valid_statuses[0]
