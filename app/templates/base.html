@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}PUXAI{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  </head>
+  <body>
+    <div class="site-shell">
+      <nav class="navbar navbar-expand-lg navbar-dark app-nav">
+        <div class="container-fluid">
+          <a class="navbar-brand brand-lockup" href="{{ url_for('index') }}">
+            <span class="brand-mark">PU</span>
+            <span>PUXAI</span>
+          </a>
+          <div class="navbar-nav gap-lg-3 small align-items-lg-center">
+            <span class="nav-link disabled">Cross-platform local AI workspace</span>
+            <span class="nav-link disabled">{{ os_name }}</span>
+            <span class="nav-link disabled">
+              {% if ollama_status.available %}
+                Ollama online
+              {% else %}
+                Ollama offline
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      </nav>
+
+      <div class="container-fluid py-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="mb-3">
+              {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });
+      window.puxaiMermaid = mermaid;
+    </script>
+  </body>
+</html>

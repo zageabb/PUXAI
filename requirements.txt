@@ -1,4 +1,5 @@
 # Core dependencies for Local Assistant
+flask
 requests
 pystray
 pillow

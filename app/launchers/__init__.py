@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.launchers.base_launcher import BaseLauncher, LaunchableApp
 from app.launchers.linux_launcher import LinuxLauncher
+from app.launchers.macos_launcher import MacOSLauncher
 from app.launchers.windows_launcher import WindowsLauncher
 
 
@@ -13,9 +14,18 @@ def create_launcher(os_name: str) -> BaseLauncher | None:
     normalized = os_name.lower().strip()
     if normalized == "windows":
         return WindowsLauncher()
+    if normalized == "macos":
+        return MacOSLauncher()
     if normalized == "linux":
         return LinuxLauncher()
     return None
 
 
-__all__ = ["BaseLauncher", "LaunchableApp", "LinuxLauncher", "WindowsLauncher", "create_launcher"]
+__all__ = [
+    "BaseLauncher",
+    "LaunchableApp",
+    "LinuxLauncher",
+    "MacOSLauncher",
+    "WindowsLauncher",
+    "create_launcher",
+]

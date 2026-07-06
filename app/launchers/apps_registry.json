@@ -5,6 +5,7 @@
       "name": "Terminal",
       "windows_command": "wt.exe",
       "linux_command": "gnome-terminal",
+      "macos_command": "open -a Terminal",
       "icon": null,
       "category": "system"
     },
@@ -13,6 +14,7 @@
       "name": "Web Browser",
       "windows_command": "start microsoft-edge:",
       "linux_command": "xdg-open https://www.google.com",
+      "macos_command": "open https://www.google.com",
       "icon": null,
       "category": "web"
     },
@@ -21,6 +23,7 @@
       "name": "File Explorer",
       "windows_command": "explorer.exe",
       "linux_command": "nautilus",
+      "macos_command": "open .",
       "icon": null,
       "category": "system"
     },
@@ -29,6 +32,7 @@
       "name": "Settings",
       "windows_command": "start ms-settings:",
       "linux_command": "gnome-control-center",
+      "macos_command": "open -a 'System Settings'",
       "icon": null,
       "category": "system"
     },
@@ -37,6 +41,7 @@
       "name": "Calculator",
       "windows_command": "calc.exe",
       "linux_command": "gnome-calculator",
+      "macos_command": "open -a Calculator",
       "icon": null,
       "category": "utilities"
     },
@@ -45,6 +50,7 @@
       "name": "Text Editor",
       "windows_command": "notepad.exe",
       "linux_command": "gedit",
+      "macos_command": "open -a TextEdit",
       "icon": null,
       "category": "utilities"
     },
@@ -53,6 +59,7 @@
       "name": "Task Manager / System Monitor",
       "windows_command": "taskmgr.exe",
       "linux_command": "gnome-system-monitor",
+      "macos_command": "open -a 'Activity Monitor'",
       "icon": null,
       "category": "system"
     },
@@ -61,6 +68,7 @@
       "name": "Microsoft Word (Office 365)",
       "windows_command": "start https://www.office.com/launch/word",
       "linux_command": "xdg-open https://www.office.com/launch/word",
+      "macos_command": "open https://www.office.com/launch/word",
       "icon": null,
       "category": "office"
     },
@@ -69,6 +77,7 @@
       "name": "Microsoft Excel (Office 365)",
       "windows_command": "start https://www.office.com/launch/excel",
       "linux_command": "xdg-open https://www.office.com/launch/excel",
+      "macos_command": "open https://www.office.com/launch/excel",
       "icon": null,
       "category": "office"
     },
@@ -77,6 +86,7 @@
       "name": "Microsoft PowerPoint (Office 365)",
       "windows_command": "start https://www.office.com/launch/powerpoint",
       "linux_command": "xdg-open https://www.office.com/launch/powerpoint",
+      "macos_command": "open https://www.office.com/launch/powerpoint",
       "icon": null,
       "category": "office"
     },
@@ -85,6 +95,7 @@
       "name": "Microsoft Outlook (Office 365)",
       "windows_command": "start https://outlook.office.com",
       "linux_command": "xdg-open https://outlook.office.com",
+      "macos_command": "open https://outlook.office.com",
       "icon": null,
       "category": "office"
     },
@@ -93,6 +104,7 @@
       "name": "Microsoft OneNote (Office 365)",
       "windows_command": "start https://www.onenote.com",
       "linux_command": "xdg-open https://www.onenote.com",
+      "macos_command": "open https://www.onenote.com",
       "icon": null,
       "category": "office"
     },
@@ -101,6 +113,7 @@
       "name": "Microsoft Teams (Office 365)",
       "windows_command": "start https://teams.microsoft.com",
       "linux_command": "xdg-open https://teams.microsoft.com",
+      "macos_command": "open https://teams.microsoft.com",
       "icon": null,
       "category": "office"
     },
@@ -109,6 +122,7 @@
       "name": "Microsoft OneDrive (Office 365)",
       "windows_command": "start https://onedrive.live.com",
       "linux_command": "xdg-open https://onedrive.live.com",
+      "macos_command": "open https://onedrive.live.com",
       "icon": null,
       "category": "office"
     }
