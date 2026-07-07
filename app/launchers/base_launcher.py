@@ -20,6 +20,7 @@ class LaunchableApp:
     name: str
     command: list[str]
     category: str | None = None
+    raw_command: str | None = None
 
 
 class BaseLauncher(ABC):
@@ -75,6 +76,7 @@ class BaseLauncher(ABC):
                     name=item["name"],
                     category=item.get("category"),
                     command=command,
+                    raw_command=str(item.get(f"{self.platform_key}_command", "")).strip() or None,
                 )
             )
 
