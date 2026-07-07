@@ -169,6 +169,11 @@ class BoardStore:
                 break
         return self.save(board)
 
+    def delete_task(self, task_id: str) -> dict[str, Any]:
+        board = self.load()
+        board["tasks"] = [task for task in board["tasks"] if task["id"] != task_id]
+        return self.save(board)
+
     def append_task_run(self, task_id: str, run: dict[str, Any]) -> dict[str, Any]:
         board = self.load()
         for task in board["tasks"]:

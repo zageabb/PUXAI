@@ -5,6 +5,7 @@ from __future__ import annotations
 from io import BytesIO
 import logging
 from pathlib import Path
+import shutil
 from typing import Any
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, send_from_directory, url_for
@@ -219,6 +220,23 @@ def create_app(
         _refresh_mermaid(app)
         flash(f"Saved task workspace for '{patch['title']}'.", "success")
         return redirect(url_for("edit_task", task_id=task_id))
+
+    @app.post("/tasks/<task_id>/delete")
+    def delete_task(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            flash("Task not found.", "warning")
+            return redirect(url_for("index"))
+
+        task_files_dir = _task_files_dir(app, task_id)
+        if task_files_dir.exists():
+            shutil.rmtree(task_files_dir, ignore_errors=True)
+
+        _board_store(app).delete_task(task_id)
+        _refresh_mermaid(app)
+        flash(f"Deleted task '{task['title']}'.", "success")
+        return redirect(url_for("index"))
 
     @app.post("/tasks/<task_id>/repo-context")
     def update_repo_context(task_id: str) -> Any:

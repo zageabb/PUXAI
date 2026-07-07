@@ -13,6 +13,9 @@
       <div class="task-edit-actions">
         <a class="btn btn-outline-dark" href="{{ url_for('index') }}">Back to board</a>
         <a class="btn btn-outline-secondary" href="{{ url_for('download_rfq_brief', task_id=task.id) }}">Download RFQ brief</a>
+        <form action="{{ url_for('delete_task', task_id=task.id) }}" method="post" onsubmit="return confirm('Delete this task and its attached files?');">
+          <button class="btn btn-outline-danger" type="submit">Delete task</button>
+        </form>
       </div>
     </div>
 
