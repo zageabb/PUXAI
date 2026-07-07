@@ -66,6 +66,15 @@ def create_app(
             os_name=os_name,
         )
 
+    @app.get("/tasks/new")
+    def new_task() -> str:
+        board = _board_store(app).load()
+        return render_template(
+            "task_new.html",
+            board=board,
+            default_status=board["statuses"][0] if board["statuses"] else "Backlog",
+        )
+
     @app.get("/tasks/<task_id>/edit")
     def edit_task(task_id: str) -> Any:
         board = _board_store(app).load()
@@ -92,7 +101,7 @@ def create_app(
 
         if not title:
             flash("A task title is required.", "warning")
-            return redirect(url_for("index"))
+            return redirect(url_for("new_task"))
 
         task = {
             "id": new_id(),

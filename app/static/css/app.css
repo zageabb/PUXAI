@@ -124,6 +124,11 @@ pre {
   grid-template-columns: minmax(0, 1fr) var(--panel-width);
   gap: 1.5rem;
   align-items: start;
+  transition: grid-template-columns 0.22s ease;
+}
+
+.layout-grid.side-rail-collapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .task-edit-shell {
@@ -274,10 +279,18 @@ pre {
 
 .task-card {
   cursor: grab;
+  position: relative;
+  transition: box-shadow 0.16s ease, transform 0.16s ease;
 }
 
 .task-card.is-dragging {
   opacity: 0.55;
+}
+
+.task-card-expanded {
+  z-index: 20;
+  box-shadow: 0 28px 56px rgba(17, 58, 82, 0.22);
+  transform: translateY(-4px);
 }
 
 .dropzone-active {
@@ -511,6 +524,10 @@ pre {
   top: 1rem;
 }
 
+.layout-grid.side-rail-collapsed .side-rail {
+  display: none;
+}
+
 .status-stack {
   display: grid;
   gap: 0.6rem;
@@ -549,6 +566,11 @@ pre {
   margin-top: 0.9rem;
 }
 
+.task-detail-grid-compact {
+  grid-template-columns: 1.1fr 1.4fr 0.8fr;
+  gap: 0.75rem;
+}
+
 .task-detail-panel,
 .artifact-preview-card,
 .document-mini-card {
@@ -561,8 +583,18 @@ pre {
   padding: 0.9rem;
 }
 
+.task-detail-panel .mini-label {
+  margin-bottom: 0.45rem;
+}
+
 .context-block {
   margin-top: 0.8rem;
+}
+
+.context-summary {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .file-pill-grid {
@@ -600,12 +632,65 @@ pre {
   margin-top: 1rem;
 }
 
+.task-artifact-preview-grid-compact {
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
 .board-artifacts {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.board-artifacts-expanded .board-artifact-button .mermaid-board {
+  min-height: 20rem;
+}
+
 .artifact-preview-card {
   padding: 0.9rem;
+}
+
+.board-artifact-button {
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(16, 34, 48, 0.08);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.board-artifact-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 44px rgba(17, 58, 82, 0.12);
+}
+
+.board-artifact-button .mermaid-board {
+  min-height: 13rem;
+}
+
+.mermaid-modal-content {
+  border-radius: 1.5rem;
+  border: 1px solid rgba(16, 34, 48, 0.08);
+}
+
+.mermaid-modal-diagram-shell {
+  min-height: 34rem;
+  background: #f7fafc;
+  border-radius: 1rem;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.mermaid-modal-diagram {
+  min-height: 100%;
+}
+
+.artifact-preview-card-compact {
+  padding: 0.65rem;
+}
+
+.artifact-preview-card-compact .mermaid {
+  max-height: 11rem;
+  overflow: auto;
 }
 
 .mermaid-editor {
@@ -650,6 +735,10 @@ pre {
   .layout-grid,
   .two-up-grid,
   .task-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .layout-grid.side-rail-collapsed {
     grid-template-columns: 1fr;
   }
 

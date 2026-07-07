@@ -60,6 +60,16 @@ document.querySelectorAll("[data-task-id]").forEach((card) => {
   });
 });
 
+document.querySelectorAll(".task-detail-shell").forEach((detail) => {
+  detail.addEventListener("toggle", () => {
+    const card = detail.closest(".task-card");
+    if (!card) {
+      return;
+    }
+    card.classList.toggle("task-card-expanded", detail.open);
+  });
+});
+
 document.querySelectorAll("[data-dropzone]").forEach((zone) => {
   zone.addEventListener("dragover", (event) => {
     event.preventDefault();
@@ -91,3 +101,64 @@ document.querySelectorAll("[data-dropzone]").forEach((zone) => {
     }
   });
 });
+
+const mermaidModalElement = document.getElementById("mermaidPreviewModal");
+const mermaidModalTitle = document.getElementById("mermaidPreviewModalLabel");
+const mermaidModalDiagram = document.getElementById("mermaidPreviewModalDiagram");
+
+if (mermaidModalElement && mermaidModalTitle && mermaidModalDiagram && window.bootstrap) {
+  const mermaidModal = new window.bootstrap.Modal(mermaidModalElement);
+  let mermaidModalRenderIndex = 0;
+  document.querySelectorAll("[data-mermaid-modal-body]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const title = button.dataset.mermaidModalTitle || "Mermaid preview";
+      const body = button.dataset.mermaidModalBody || "";
+      mermaidModalTitle.textContent = title;
+      mermaidModalRenderIndex += 1;
+      const renderId = `mermaid-modal-${mermaidModalRenderIndex}`;
+      mermaidModalDiagram.innerHTML = "";
+      const renderNode = document.createElement("div");
+      renderNode.className = "mermaid";
+      renderNode.id = renderId;
+      renderNode.textContent = body;
+      mermaidModalDiagram.appendChild(renderNode);
+      mermaidModal.show();
+
+      if (window.puxaiMermaid) {
+        try {
+          await window.puxaiMermaid.run({
+            nodes: [renderNode],
+          });
+        } catch (error) {
+          console.error("Mermaid modal render failed", error);
+        }
+      }
+    });
+  });
+}
+
+const sideRailToggle = document.getElementById("sideRailToggle");
+const layoutGrid = document.querySelector(".layout-grid");
+const sideRail = document.getElementById("workspaceSideRail");
+const sideRailStorageKey = "puxai-side-rail-collapsed";
+
+function syncSideRailState(isCollapsed) {
+  if (!layoutGrid || !sideRailToggle || !sideRail) {
+    return;
+  }
+  layoutGrid.classList.toggle("side-rail-collapsed", isCollapsed);
+  sideRail.hidden = isCollapsed;
+  sideRailToggle.textContent = isCollapsed ? "Show AI side" : "Hide AI side";
+  sideRailToggle.setAttribute("aria-expanded", String(!isCollapsed));
+}
+
+if (sideRailToggle && layoutGrid && sideRail) {
+  const storedPreference = window.localStorage.getItem(sideRailStorageKey);
+  syncSideRailState(storedPreference === "true");
+
+  sideRailToggle.addEventListener("click", () => {
+    const nextState = !layoutGrid.classList.contains("side-rail-collapsed");
+    window.localStorage.setItem(sideRailStorageKey, String(nextState));
+    syncSideRailState(nextState);
+  });
+}

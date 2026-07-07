@@ -9,9 +9,19 @@
       <h1 class="display-title">{{ board.board_title }}</h1>
       <p class="hero-copy">{{ board.board_summary }}</p>
       <div class="hero-actions">
+        <a class="btn btn-light" href="{{ url_for('new_task') }}">New task</a>
         <form action="{{ url_for('refresh_mermaid') }}" method="post">
           <button class="btn btn-light" type="submit">Refresh Mermaid Views</button>
         </form>
+        <button
+          class="btn btn-outline-light"
+          type="button"
+          id="sideRailToggle"
+          aria-expanded="true"
+          aria-controls="workspaceSideRail"
+        >
+          Hide AI side
+        </button>
       </div>
     </div>
     <div class="hero-metrics">
@@ -113,37 +123,20 @@
                       <details class="task-detail-shell">
                         <summary>Task context and artifacts</summary>
 
-                        <div class="task-detail-grid">
+                        <div class="task-detail-grid task-detail-grid-compact">
                           <section class="task-detail-panel">
-                            <div class="mini-label">Repo context</div>
-                            <form action="{{ url_for('update_repo_context', task_id=task.id) }}" method="post" class="stack-form compact-stack">
-                              <input type="hidden" name="next" value="{{ url_for('index') }}">
-                              <div>
-                                <label class="form-label">Repository path</label>
-                                <input class="form-control form-control-sm" type="text" name="repo_path" value="{{ task.repo_context.repo_path }}" placeholder="/path/to/repo">
-                              </div>
-                              <div>
-                                <label class="form-label">Focus patterns</label>
-                                <input class="form-control form-control-sm" type="text" name="focus_patterns" value="{{ task.repo_context.focus_patterns }}">
-                              </div>
-                              <div>
-                                <label class="form-label">Repo notes</label>
-                                <textarea class="form-control form-control-sm" name="repo_notes" rows="3">{{ task.repo_context.notes }}</textarea>
-                              </div>
-                              <button class="btn btn-sm btn-outline-dark" type="submit">Ingest repo context</button>
-                            </form>
-
+                            <div class="mini-label">Task context</div>
                             {% if task.repo_context.summary %}
                               <div class="context-block">
                                 <div class="mini-label">Repo summary</div>
-                                <pre class="code-block compact-code">{{ task.repo_context.summary }}</pre>
+                                <div class="context-summary">{{ task.repo_context.summary }}</div>
                               </div>
                             {% endif %}
                             {% if task.repo_context.selected_files %}
                               <div class="context-block">
-                                <div class="mini-label">Selected files</div>
+                                <div class="mini-label">Files</div>
                                 <div class="file-pill-grid">
-                                  {% for file in task.repo_context.selected_files[:10] %}
+                                  {% for file in task.repo_context.selected_files[:6] %}
                                     <span class="file-pill">{{ file }}</span>
                                   {% endfor %}
                                 </div>
@@ -151,8 +144,8 @@
                             {% endif %}
                             {% if task.repo_context.documents %}
                               <div class="context-block">
-                                <div class="mini-label">Extracted knowledge</div>
-                                {% for document in task.repo_context.documents[:3] %}
+                                <div class="mini-label">Documents</div>
+                                {% for document in task.repo_context.documents[:4] %}
                                   <div class="document-mini-card">
                                     <strong>{{ document.path }}</strong>
                                     <div class="small text-muted">{{ document.summary }}</div>
@@ -163,38 +156,24 @@
                           </section>
 
                           <section class="task-detail-panel">
-                            <div class="mini-label">Mermaid artifacts</div>
-                            <form action="{{ url_for('update_task_artifacts', task_id=task.id) }}" method="post" class="stack-form compact-stack">
-                              <div>
-                                <label class="form-label">Architecture</label>
-                                <textarea class="form-control form-control-sm mermaid-editor" name="architecture" rows="7">{{ task.mermaid_artifacts.architecture }}</textarea>
-                              </div>
-                              <div>
-                                <label class="form-label">Flow</label>
-                                <textarea class="form-control form-control-sm mermaid-editor" name="flow" rows="7">{{ task.mermaid_artifacts.flow }}</textarea>
-                              </div>
-                              <div>
-                                <label class="form-label">Kanban subview</label>
-                                <textarea class="form-control form-control-sm mermaid-editor" name="kanban_subview" rows="6">{{ task.mermaid_artifacts.kanban_subview }}</textarea>
-                              </div>
-                              <button class="btn btn-sm btn-outline-dark" type="submit">Save artifacts</button>
-                            </form>
+                            <div class="mini-label">Mermaid previews</div>
+                            <div class="task-artifact-preview-grid task-artifact-preview-grid-compact">
+                              {% for artifact_name, artifact_body in task.mermaid_artifacts.items() %}
+                                {% if artifact_body %}
+                                  <div class="artifact-preview-card artifact-preview-card-compact">
+                                    <div class="mini-label">{{ artifact_name.replace('_', ' ') }}</div>
+                                    <pre class="mermaid">{{ artifact_body }}</pre>
+                                  </div>
+                                {% endif %}
+                              {% endfor %}
+                            </div>
                           </section>
 
                           <section class="task-detail-panel">
-                            <div class="mini-label">Executor actions</div>
-                            <div class="executor-grid">
-                              {% for action in task.executor_actions %}
-                                <form action="{{ url_for('run_executor', task_id=task.id) }}" method="post">
-                                  <input type="hidden" name="next" value="{{ url_for('index') }}">
-                                  <input type="hidden" name="action" value="{{ action }}">
-                                  <button class="btn btn-sm btn-outline-secondary w-100" type="submit">{{ action.replace('_', ' ') }}</button>
-                                </form>
-                              {% endfor %}
-                            </div>
+                            <div class="mini-label">Recent activity</div>
                             {% if task.executor_runs %}
                               <div class="context-block">
-                                <div class="mini-label">Recent executor runs</div>
+                                <div class="mini-label">Executor runs</div>
                                 {% for run in task.executor_runs[:4] %}
                                   <div class="document-mini-card">
                                     <strong>{{ run.kind }}</strong>
@@ -203,18 +182,10 @@
                                 {% endfor %}
                               </div>
                             {% endif %}
+                            <div class="context-block">
+                              <a class="btn btn-sm btn-outline-dark w-100" href="{{ url_for('edit_task', task_id=task.id) }}">Open full task workspace</a>
+                            </div>
                           </section>
-                        </div>
-
-                        <div class="task-artifact-preview-grid">
-                          {% for artifact_name, artifact_body in task.mermaid_artifacts.items() %}
-                            {% if artifact_body %}
-                              <div class="artifact-preview-card">
-                                <div class="mini-label">{{ artifact_name.replace('_', ' ') }}</div>
-                                <pre class="mermaid">{{ artifact_body }}</pre>
-                              </div>
-                            {% endif %}
-                          {% endfor %}
                         </div>
                       </details>
                     </article>
@@ -228,76 +199,35 @@
         </div>
       </section>
 
-      <div class="two-up-grid">
-        <section class="glass-panel p-4">
-          <div class="section-heading">
-            <div>
-              <div class="section-kicker">Create Work</div>
-              <h2>Add a task</h2>
-            </div>
+      <section class="glass-panel p-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Board Mermaid</div>
+            <h2>Kanban and stitched board views</h2>
           </div>
-          <form action="{{ url_for('create_task') }}" method="post" class="stack-form">
-            <div>
-              <label class="form-label">Title</label>
-              <input class="form-control" type="text" name="title" placeholder="Example: Integrate local agent runs into document workflows">
-            </div>
-            <div>
-              <label class="form-label">Summary</label>
-              <textarea class="form-control" name="summary" rows="4" placeholder="Describe what the task should achieve and why it matters."></textarea>
-            </div>
-            <div class="form-grid">
-              <div>
-                <label class="form-label">Status</label>
-                <select class="form-select" name="status">
-                  {% for status in board.statuses %}
-                    <option value="{{ status }}">{{ status }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div>
-                <label class="form-label">Priority</label>
-                <select class="form-select" name="priority">
-                  <option>High</option>
-                  <option selected>Medium</option>
-                  <option>Low</option>
-                </select>
-              </div>
-              <div>
-                <label class="form-label">Owner</label>
-                <input class="form-control" type="text" name="owner" value="PUXAI">
-              </div>
-              <div>
-                <label class="form-label">Labels</label>
-                <input class="form-control" type="text" name="labels" placeholder="agents, ui, mermaid">
-              </div>
-            </div>
-            <div class="form-check ai-check">
-              <input class="form-check-input" type="checkbox" value="1" id="ai_enrich" name="ai_enrich" checked>
-              <label class="form-check-label" for="ai_enrich">Use Ollama to enrich this task with checklist items, artifact hints, and an agent brief</label>
-            </div>
-            <button class="btn btn-primary" type="submit">Create task</button>
-          </form>
-        </section>
-
-        <section class="glass-panel p-4">
-          <div class="section-heading">
-            <div>
-              <div class="section-kicker">Board Mermaid</div>
-              <h2>Kanban and stitched board views</h2>
-            </div>
-          </div>
-          <div class="task-artifact-preview-grid board-artifacts">
-            <div class="artifact-preview-card">
-              <div class="mini-label">Board kanban</div>
-              <pre class="mermaid mermaid-board">{{ board.board_mermaid_artifacts.kanban }}</pre>
-            </div>
-            <div class="artifact-preview-card">
-              <div class="mini-label">Stitched board</div>
-              <pre class="mermaid mermaid-board">{{ board.board_mermaid_artifacts.stitched }}</pre>
-            </div>
-          </div>
-        </section>
-      </div>
+          <div class="section-note">Open either preview for a larger rendered view of the board structure and flow.</div>
+        </div>
+        <div class="task-artifact-preview-grid board-artifacts board-artifacts-expanded">
+          <button
+            class="artifact-preview-card board-artifact-button"
+            type="button"
+            data-mermaid-modal-title="Board kanban"
+            data-mermaid-modal-body="{{ board.board_mermaid_artifacts.kanban|e }}"
+          >
+            <div class="mini-label">Board kanban</div>
+            <pre class="mermaid mermaid-board">{{ board.board_mermaid_artifacts.kanban }}</pre>
+          </button>
+          <button
+            class="artifact-preview-card board-artifact-button"
+            type="button"
+            data-mermaid-modal-title="Stitched board"
+            data-mermaid-modal-body="{{ board.board_mermaid_artifacts.stitched|e }}"
+          >
+            <div class="mini-label">Stitched board</div>
+            <pre class="mermaid mermaid-board">{{ board.board_mermaid_artifacts.stitched }}</pre>
+          </button>
+        </div>
+      </section>
 
       <div class="two-up-grid mt-4">
         <section class="glass-panel p-4">
@@ -341,7 +271,7 @@
       </div>
     </main>
 
-    <aside class="side-rail">
+    <aside class="side-rail" id="workspaceSideRail">
       <section class="chat-panel card shadow-sm mb-4">
         <div class="card-header">
           <div class="fw-semibold">Assistant</div>
@@ -418,5 +348,24 @@
         </div>
       </section>
     </aside>
+  </div>
+
+  <div class="modal fade" id="mermaidPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content mermaid-modal-content">
+        <div class="modal-header">
+          <div>
+            <div class="section-kicker mb-1">Board Mermaid</div>
+            <h2 class="modal-title fs-4" id="mermaidPreviewModalLabel">Mermaid preview</h2>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mermaid-modal-diagram-shell">
+            <div class="mermaid-modal-diagram" id="mermaidPreviewModalDiagram"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 {% endblock %}
