@@ -78,6 +78,26 @@ def default_task() -> dict[str, Any]:
     }
 
 
+def default_note() -> dict[str, Any]:
+    return {
+        "id": new_id(),
+        "title": "Untitled note",
+        "body": "",
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+    }
+
+
+def default_todo_item() -> dict[str, Any]:
+    return {
+        "id": new_id(),
+        "text": "",
+        "done": False,
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+    }
+
+
 def default_board() -> dict[str, Any]:
     cross_platform = default_task()
     cross_platform.update(
@@ -117,6 +137,8 @@ def default_board() -> dict[str, Any]:
         ),
         "statuses": list(DEFAULT_STATUSES),
         "tasks": [cross_platform, mermaid_task],
+        "notes": [],
+        "todo_items": [],
         "agent_runs": [],
         "chat_history": [],
         "board_mermaid_artifacts": {
@@ -160,6 +182,18 @@ class BoardStore:
         board["tasks"].append(task)
         return self.save(board)
 
+    def add_note(self, note: dict[str, Any]) -> dict[str, Any]:
+        board = self.load()
+        board.setdefault("notes", []).insert(0, note)
+        board["notes"] = board["notes"][:50]
+        return self.save(board)
+
+    def add_todo_item(self, todo_item: dict[str, Any]) -> dict[str, Any]:
+        board = self.load()
+        board.setdefault("todo_items", []).insert(0, todo_item)
+        board["todo_items"] = board["todo_items"][:100]
+        return self.save(board)
+
     def update_task(self, task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
         board = self.load()
         for task in board["tasks"]:
@@ -172,6 +206,15 @@ class BoardStore:
     def delete_task(self, task_id: str) -> dict[str, Any]:
         board = self.load()
         board["tasks"] = [task for task in board["tasks"] if task["id"] != task_id]
+        return self.save(board)
+
+    def toggle_todo_item(self, todo_id: str) -> dict[str, Any]:
+        board = self.load()
+        for todo_item in board.get("todo_items", []):
+            if todo_item["id"] == todo_id:
+                todo_item["done"] = not todo_item.get("done", False)
+                todo_item["updated_at"] = utc_now()
+                break
         return self.save(board)
 
     def append_task_run(self, task_id: str, run: dict[str, Any]) -> dict[str, Any]:
@@ -206,6 +249,11 @@ class BoardStore:
             task = _normalize_task(raw_task, board["statuses"])
             normalized_tasks.append(task)
         board["tasks"] = normalized_tasks
+        board["notes"] = [_normalize_note(raw_note) for raw_note in board.get("notes", [])]
+        board["todo_items"] = [
+            _normalize_todo_item(raw_todo_item)
+            for raw_todo_item in board.get("todo_items", [])
+        ]
         board["agent_runs"] = list(board.get("agent_runs", []))
         board["chat_history"] = list(board.get("chat_history", []))
         board["ideas"] = list(board.get("ideas", []))
@@ -272,3 +320,25 @@ def _normalize_task(raw_task: dict[str, Any], valid_statuses: list[str]) -> dict
         "last_ingested_at": str(repo_context.get("last_ingested_at", "")).strip(),
     }
     return task
+
+
+def _normalize_note(raw_note: dict[str, Any]) -> dict[str, Any]:
+    base = default_note()
+    return {
+        "id": raw_note.get("id") or base["id"],
+        "title": str(raw_note.get("title", base["title"])).strip() or base["title"],
+        "body": str(raw_note.get("body", "")).strip(),
+        "created_at": raw_note.get("created_at", base["created_at"]),
+        "updated_at": raw_note.get("updated_at", base["updated_at"]),
+    }
+
+
+def _normalize_todo_item(raw_todo_item: dict[str, Any]) -> dict[str, Any]:
+    base = default_todo_item()
+    return {
+        "id": raw_todo_item.get("id") or base["id"],
+        "text": str(raw_todo_item.get("text", "")).strip(),
+        "done": bool(raw_todo_item.get("done", False)),
+        "created_at": raw_todo_item.get("created_at", base["created_at"]),
+        "updated_at": raw_todo_item.get("updated_at", base["updated_at"]),
+    }

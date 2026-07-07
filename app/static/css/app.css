@@ -546,6 +546,62 @@ pre {
   gap: 0.85rem;
 }
 
+.capture-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.capture-card {
+  border: 1px solid rgba(16, 34, 48, 0.08);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 252, 0.94));
+  padding: 1rem;
+}
+
+.capture-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: start;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-preview {
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3 {
+  margin: 0.8rem 0 0.45rem;
+  font-weight: 800;
+}
+
+.markdown-preview h1 {
+  font-size: 1.3rem;
+}
+
+.markdown-preview h2 {
+  font-size: 1.12rem;
+}
+
+.markdown-preview h3 {
+  font-size: 1rem;
+}
+
+.markdown-preview p,
+.markdown-preview ul,
+.markdown-preview ol {
+  margin: 0 0 0.7rem;
+}
+
+.markdown-preview code {
+  background: rgba(20, 56, 76, 0.08);
+  border-radius: 0.45rem;
+  padding: 0.08rem 0.35rem;
+}
+
 .task-detail-shell {
   margin-top: 0.8rem;
   border-top: 1px dashed rgba(16, 34, 48, 0.14);

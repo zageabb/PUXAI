@@ -5,23 +5,38 @@ from __future__ import annotations
 from io import BytesIO
 import logging
 from pathlib import Path
+import re
 import shutil
 from typing import Any
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, send_from_directory, url_for
+from markupsafe import Markup, escape
 from werkzeug.utils import secure_filename
 
 from app.config import AppConfig
 from app.launchers import BaseLauncher
 from app.session_history import append_launch_event
 from app.services.agent_service import board_chat_reply, draft_task_with_ai, record_agent_run, run_task_agent
-from app.services.board_store import BoardStore, default_mermaid_artifacts, default_repo_context, new_id, utc_now
+from app.services.board_store import (
+    BoardStore,
+    default_mermaid_artifacts,
+    default_note,
+    default_repo_context,
+    default_todo_item,
+    new_id,
+    utc_now,
+)
 from app.services.executor_service import execute_task_action, record_executor_run
 from app.services.mermaid_service import build_kanban_mermaid, build_stitched_board_mermaid
 from app.services.ollama_client import OllamaClient
 from app.services.repo_context_service import ingest_repository_context
 
 LOGGER = logging.getLogger(__name__)
+
+try:
+    import markdown as markdown_lib
+except ImportError:  # pragma: no cover - optional dependency
+    markdown_lib = None
 
 
 def create_app(
@@ -53,6 +68,7 @@ def create_app(
             "ollama_status": ollama_status,
             "board_kanban_mermaid": board.get("board_mermaid_artifacts", {}).get("kanban", ""),
             "board_stitched_mermaid": board.get("board_mermaid_artifacts", {}).get("stitched", ""),
+            "render_markdown": _render_markdown,
         }
 
     @app.get("/")
@@ -149,6 +165,128 @@ def create_app(
         _refresh_mermaid(app)
         flash(f"Added task '{title}'.", "success")
         return redirect(url_for("index"))
+
+    @app.post("/notes")
+    def create_note() -> Any:
+        title = request.form.get("title", "").strip() or "Untitled note"
+        body = request.form.get("body", "").strip()
+        if not body:
+            flash("A markdown note body is required.", "warning")
+            return redirect(url_for("index"))
+
+        note = default_note()
+        note.update(
+            {
+                "title": title,
+                "body": body,
+                "updated_at": utc_now(),
+            }
+        )
+        _board_store(app).add_note(note)
+        flash(f"Saved note '{title}'.", "success")
+        return redirect(url_for("index"))
+
+    @app.post("/todos")
+    def create_todo_item() -> Any:
+        text = request.form.get("text", "").strip()
+        if not text:
+            flash("A todo item needs some text.", "warning")
+            return redirect(url_for("index"))
+
+        todo_item = default_todo_item()
+        todo_item.update(
+            {
+                "text": text,
+                "updated_at": utc_now(),
+            }
+        )
+        _board_store(app).add_todo_item(todo_item)
+        flash("Added todo item.", "success")
+        return redirect(url_for("index"))
+
+    @app.post("/todos/<todo_id>/toggle")
+    def toggle_todo_item(todo_id: str) -> Any:
+        _board_store(app).toggle_todo_item(todo_id)
+        return redirect(url_for("index"))
+
+    @app.post("/capture/<source_type>/<source_id>/task")
+    def create_task_from_capture(source_type: str, source_id: str) -> Any:
+        board = _board_store(app).load()
+        title = ""
+        summary = ""
+        labels = ["captured"]
+        owner = "PUXAI"
+
+        if source_type == "note":
+            note = next((item for item in board.get("notes", []) if item["id"] == source_id), None)
+            if note is None:
+                flash("Note not found.", "warning")
+                return redirect(url_for("index"))
+            title = note["title"]
+            summary = note["body"]
+            labels.append("note")
+        elif source_type == "todo":
+            todo_item = next((item for item in board.get("todo_items", []) if item["id"] == source_id), None)
+            if todo_item is None:
+                flash("Todo item not found.", "warning")
+                return redirect(url_for("index"))
+            title = todo_item["text"][:100]
+            summary = f"Task created from todo inbox item:\n\n- {todo_item['text']}"
+            labels.append("todo")
+        else:
+            flash("Unknown capture type.", "warning")
+            return redirect(url_for("index"))
+
+        task = {
+            "id": new_id(),
+            "title": title or "Captured task",
+            "summary": summary,
+            "status": board["statuses"][0],
+            "priority": "Medium",
+            "labels": labels,
+            "owner": owner,
+            "checklist": [],
+            "agent_brief": "",
+            "latest_agent_notes": "",
+            "created_at": utc_now(),
+            "updated_at": utc_now(),
+            "mermaid_artifacts": default_mermaid_artifacts(),
+            "repo_context": default_repo_context(),
+            "executor_runs": [],
+            "last_executor_action": "",
+            "last_executor_notes": "",
+        }
+
+        if config.enable_ai:
+            client = _ollama_client(config)
+            if client and client.is_available():
+                ai_payload = draft_task_with_ai(client, config.ollama_agent_model, board, task["title"], task["summary"])
+                if ai_payload:
+                    task["summary"] = ai_payload.get("summary", task["summary"])
+                    task["priority"] = ai_payload.get("priority", task["priority"])
+                    task["labels"] = sorted(
+                        {
+                            *task["labels"],
+                            *[label for label in ai_payload.get("labels", []) if label],
+                        }
+                    )
+                    task["owner"] = ai_payload.get("owner", task["owner"]) or task["owner"]
+                    task["checklist"] = [
+                        {"text": str(item).strip(), "done": False}
+                        for item in ai_payload.get("checklist", [])
+                        if str(item).strip()
+                    ]
+                    task["agent_brief"] = ai_payload.get("agent_brief", "")
+                    task["mermaid_artifacts"] = {
+                        **task["mermaid_artifacts"],
+                        **(ai_payload.get("mermaid_artifacts", {}) or {}),
+                    }
+                    task["repo_context"]["notes"] = str(ai_payload.get("repo_context_notes", "")).strip()
+
+        _board_store(app).add_task(task)
+        _refresh_mermaid(app)
+        flash(f"Created task '{task['title']}' from {source_type}.", "success")
+        return redirect(url_for("edit_task", task_id=task["id"]))
 
     @app.post("/tasks/<task_id>/move")
     def move_task(task_id: str) -> Any:
@@ -638,3 +776,40 @@ def _refresh_mermaid(app: Flask) -> None:
         "stitched": build_stitched_board_mermaid(board),
     }
     _board_store(app).save(board)
+
+
+def _render_markdown(raw_text: str) -> Markup:
+    text = (raw_text or "").strip()
+    if not text:
+        return Markup("")
+
+    if markdown_lib is not None:
+        html = markdown_lib.markdown(
+            text,
+            extensions=["extra", "sane_lists", "nl2br"],
+        )
+        return Markup(html)
+
+    escaped = escape(text)
+    html = str(escaped)
+    html = re.sub(r"(?m)^### (.+)$", r"<h3>\1</h3>", html)
+    html = re.sub(r"(?m)^## (.+)$", r"<h2>\1</h2>", html)
+    html = re.sub(r"(?m)^# (.+)$", r"<h1>\1</h1>", html)
+    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
+    html = re.sub(r"\*(.+?)\*", r"<em>\1</em>", html)
+    html = re.sub(r"`(.+?)`", r"<code>\1</code>", html)
+    blocks = [block.strip() for block in html.split("\n\n") if block.strip()]
+    rendered_blocks: list[str] = []
+    for block in blocks:
+        lines = block.splitlines()
+        if all(line.startswith("- ") for line in lines):
+            items = "".join(f"<li>{line[2:]}</li>" for line in lines)
+            rendered_blocks.append(f"<ul>{items}</ul>")
+        elif all(line.startswith("1. ") for line in lines):
+            items = "".join(f"<li>{line[3:]}</li>" for line in lines)
+            rendered_blocks.append(f"<ol>{items}</ol>")
+        elif block.startswith("<h1>") or block.startswith("<h2>") or block.startswith("<h3>"):
+            rendered_blocks.append(block)
+        else:
+            rendered_blocks.append(f"<p>{'<br>'.join(lines)}</p>")
+    return Markup("".join(rendered_blocks))

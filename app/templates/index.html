@@ -233,6 +233,84 @@
         <section class="glass-panel p-4">
           <div class="section-heading">
             <div>
+              <div class="section-kicker">Capture Notes</div>
+              <h2>Markdown notes</h2>
+            </div>
+            <div class="section-note">Capture research, call notes, prompts, and scraps in markdown. The AI can see these and turn them into tasks later.</div>
+          </div>
+          <form action="{{ url_for('create_note') }}" method="post" class="stack-form">
+            <div>
+              <label class="form-label">Title</label>
+              <input class="form-control" type="text" name="title" placeholder="Example: Discovery notes for supplier workflow">
+            </div>
+            <div>
+              <label class="form-label">Markdown body</label>
+              <textarea class="form-control mermaid-editor" name="body" rows="8" placeholder="# Idea&#10;&#10;- key point&#10;- next question&#10;&#10;**Decision:**"></textarea>
+            </div>
+            <button class="btn btn-outline-dark" type="submit">Save note</button>
+          </form>
+          <div class="capture-list mt-4">
+            {% for note in board.notes %}
+              <article class="capture-card">
+                <div class="capture-card-head">
+                  <div>
+                    <strong>{{ note.title }}</strong>
+                    <div class="small text-muted">{{ note.updated_at[:19].replace('T', ' ') }}</div>
+                  </div>
+                  <form action="{{ url_for('create_task_from_capture', source_type='note', source_id=note.id) }}" method="post">
+                    <button class="btn btn-sm btn-outline-primary" type="submit">Turn into task</button>
+                  </form>
+                </div>
+                <div class="markdown-preview">{{ render_markdown(note.body) }}</div>
+              </article>
+            {% else %}
+              <div class="empty-column-card">No notes yet. Add markdown notes here and they will also be available to the AI context.</div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Capture To-dos</div>
+              <h2>Inbox list</h2>
+            </div>
+            <div class="section-note">Quickly capture lightweight work items before they deserve a full task card.</div>
+          </div>
+          <form action="{{ url_for('create_todo_item') }}" method="post" class="stack-form">
+            <div>
+              <label class="form-label">Todo item</label>
+              <input class="form-control" type="text" name="text" placeholder="Example: Ask supplier for API authentication details">
+            </div>
+            <button class="btn btn-outline-dark" type="submit">Add todo</button>
+          </form>
+          <div class="capture-list mt-4">
+            {% for todo_item in board.todo_items %}
+              <article class="capture-card">
+                <div class="capture-card-head">
+                  <form action="{{ url_for('toggle_todo_item', todo_id=todo_item.id) }}" method="post" class="check-item flex-grow-1">
+                    <button type="submit" class="check-toggle {% if todo_item.done %}is-done{% endif %}">
+                      {% if todo_item.done %}✓{% else %}○{% endif %}
+                    </button>
+                    <span class="{% if todo_item.done %}text-decoration-line-through text-muted{% endif %}">{{ todo_item.text }}</span>
+                  </form>
+                  <form action="{{ url_for('create_task_from_capture', source_type='todo', source_id=todo_item.id) }}" method="post">
+                    <button class="btn btn-sm btn-outline-primary" type="submit">Turn into task</button>
+                  </form>
+                </div>
+                <div class="small text-muted">{{ todo_item.updated_at[:19].replace('T', ' ') }}</div>
+              </article>
+            {% else %}
+              <div class="empty-column-card">No todo items yet. Use this as your fast inbox before promoting items into tasks.</div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+
+      <div class="two-up-grid mt-4">
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
               <div class="section-kicker">Narrative</div>
               <h2>Board summary and next ideas</h2>
             </div>
