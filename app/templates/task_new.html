@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}New Task{% endblock %}
+
+{% block content %}
+  <div class="task-edit-shell">
+    <div class="task-edit-header glass-panel p-4 mb-4">
+      <div>
+        <div class="section-kicker">Create Work</div>
+        <h1 class="display-title task-edit-title">New task</h1>
+        <p class="hero-copy task-edit-copy">Capture the task first, then let Ollama enrich the brief, checklist, and Mermaid hints before it lands on the board.</p>
+      </div>
+      <div class="task-edit-actions">
+        <a class="btn btn-outline-dark" href="{{ url_for('index') }}">Back to board</a>
+      </div>
+    </div>
+
+    <section class="glass-panel p-4">
+      <div class="section-heading">
+        <div>
+          <div class="section-kicker">Task Draft</div>
+          <h2>Title, ownership, status, and AI enrichment</h2>
+        </div>
+      </div>
+      <form action="{{ url_for('create_task') }}" method="post" class="stack-form">
+        <div>
+          <label class="form-label">Title</label>
+          <input class="form-control" type="text" name="title" placeholder="Example: Integrate local agent runs into document workflows">
+        </div>
+        <div>
+          <label class="form-label">Summary</label>
+          <textarea class="form-control" name="summary" rows="5" placeholder="Describe what the task should achieve and why it matters."></textarea>
+        </div>
+        <div class="form-grid">
+          <div>
+            <label class="form-label">Status</label>
+            <select class="form-select" name="status">
+              {% for status in board.statuses %}
+                <option value="{{ status }}" {% if status == default_status %}selected{% endif %}>{{ status }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Priority</label>
+            <select class="form-select" name="priority">
+              <option>High</option>
+              <option selected>Medium</option>
+              <option>Low</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Owner</label>
+            <input class="form-control" type="text" name="owner" value="PUXAI">
+          </div>
+          <div>
+            <label class="form-label">Labels</label>
+            <input class="form-control" type="text" name="labels" placeholder="agents, ui, mermaid">
+          </div>
+        </div>
+        <div class="form-check ai-check">
+          <input class="form-check-input" type="checkbox" value="1" id="ai_enrich" name="ai_enrich" checked>
+          <label class="form-check-label" for="ai_enrich">Use Ollama to enrich this task with checklist items, artifact hints, and an agent brief</label>
+        </div>
+        <div class="task-edit-actions">
+          <button class="btn btn-primary" type="submit">Create task</button>
+          <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">Cancel</a>
+        </div>
+      </form>
+    </section>
+  </div>
+{% endblock %}

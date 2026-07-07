@@ -1,4 +1,4 @@
-"""Configuration loading utilities for the Local Assistant application."""
+"""Configuration loading utilities for the PUXAI application."""
 
 from __future__ import annotations
 
@@ -13,45 +13,32 @@ LOGGER: Final = logging.getLogger(__name__)
 
 @dataclass
 class AppConfig:
-    """Application configuration loaded from ``config.ini``.
+    """Application configuration loaded from ``config.ini``."""
 
-    Attributes:
-        app_name: Human-friendly application name for window titles and logs.
-        data_dir: Directory where JSON data files and logs may be stored.
-        enable_ai: Flag indicating whether AI features are enabled.
-        ai_backend: Selected AI backend identifier (``none``, ``chatgpt``, ``copilot``).
-        enable_tasks: Flag indicating whether task management features are enabled.
-        enable_notes: Flag indicating whether notes features are enabled.
-        enable_outlook: Flag indicating whether Outlook integration is enabled.
-        enable_history_panel: Flag indicating whether the history panel is visible.
-        enable_tray_icon: Flag indicating whether the system tray icon is enabled.
-        window_mode: Initial window mode (``full`` or ``menu_only``).
-        transparent_background: Flag to request a transparent window background.
-        chatgpt_api_key_env_var: Environment variable name holding the ChatGPT API key.
-        chatgpt_model: Default model identifier for ChatGPT interactions.
-        chatgpt_timeout_seconds: Timeout in seconds for ChatGPT requests.
-        copilot_enabled: Flag for Microsoft Copilot integration readiness.
-        copilot_tenant_id: Azure AD tenant ID for Copilot/MS Graph authentication.
-        copilot_client_id: Client ID for Copilot/MS Graph authentication.
-        copilot_client_secret_env_var: Environment variable holding the Copilot secret.
-        outlook_enabled: Flag indicating if Outlook integration is active.
-        outlook_default_task_folder: Default Outlook tasks folder name.
-        outlook_read_inbox_folder: Outlook inbox folder name to read from.
-        outlook_max_emails: Maximum number of emails to fetch when reading inbox.
-    """
-
-    app_name: str = "Local Assistant"
+    app_name: str = "PUXAI"
     data_dir: str = "./app/data"
+    default_workspace: str = "."
 
     enable_ai: bool = True
-    ai_backend: str = "chatgpt"
+    ai_backend: str = "ollama"
     enable_tasks: bool = True
     enable_notes: bool = True
-    enable_outlook: bool = True
+    enable_outlook: bool = False
     enable_history_panel: bool = True
-    enable_tray_icon: bool = True
-    window_mode: str = "menu_only"
+    enable_tray_icon: bool = False
+    window_mode: str = "web"
     transparent_background: bool = False
+
+    web_host: str = "127.0.0.1"
+    web_port: int = 8787
+    web_debug: bool = False
+    auto_open_browser: bool = True
+    open_browser_delay_seconds: float = 1.0
+
+    ollama_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "llama3.1:8b"
+    ollama_request_timeout_seconds: int = 180
+    ollama_agent_model: str = "llama3.1:8b"
 
     chatgpt_api_key_env_var: str = "OPENAI_API_KEY"
     chatgpt_model: str = "gpt-4.1-mini"
@@ -94,6 +81,11 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
 
     app_name = parser.get("general", "app_name", fallback=AppConfig.app_name)
     data_dir = parser.get("general", "data_dir", fallback=AppConfig.data_dir)
+    default_workspace = parser.get(
+        "general",
+        "default_workspace",
+        fallback=AppConfig.default_workspace,
+    )
 
     enable_ai = _getboolean(parser, "features", "enable_ai", AppConfig.enable_ai)
     ai_backend = parser.get("features", "ai_backend", fallback=AppConfig.ai_backend)
@@ -112,6 +104,34 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
         "features",
         "transparent_background",
         AppConfig.transparent_background,
+    )
+
+    web_host = parser.get("web", "host", fallback=AppConfig.web_host)
+    web_port = parser.getint("web", "port", fallback=AppConfig.web_port)
+    web_debug = _getboolean(parser, "web", "debug", AppConfig.web_debug)
+    auto_open_browser = _getboolean(
+        parser,
+        "web",
+        "auto_open_browser",
+        AppConfig.auto_open_browser,
+    )
+    open_browser_delay_seconds = parser.getfloat(
+        "web",
+        "open_browser_delay_seconds",
+        fallback=AppConfig.open_browser_delay_seconds,
+    )
+
+    ollama_url = parser.get("ollama", "url", fallback=AppConfig.ollama_url)
+    ollama_model = parser.get("ollama", "model", fallback=AppConfig.ollama_model)
+    ollama_request_timeout_seconds = parser.getint(
+        "ollama",
+        "request_timeout_seconds",
+        fallback=AppConfig.ollama_request_timeout_seconds,
+    )
+    ollama_agent_model = parser.get(
+        "ollama",
+        "agent_model",
+        fallback=AppConfig.ollama_agent_model,
     )
 
     chatgpt_api_key_env_var = parser.get(
@@ -147,6 +167,7 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
     config = AppConfig(
         app_name=app_name,
         data_dir=str(Path(data_dir)),
+        default_workspace=default_workspace,
         enable_ai=enable_ai,
         ai_backend=ai_backend,
         enable_tasks=enable_tasks,
@@ -156,6 +177,15 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
         enable_tray_icon=enable_tray_icon,
         window_mode=window_mode,
         transparent_background=transparent_background,
+        web_host=web_host,
+        web_port=web_port,
+        web_debug=web_debug,
+        auto_open_browser=auto_open_browser,
+        open_browser_delay_seconds=open_browser_delay_seconds,
+        ollama_url=ollama_url,
+        ollama_model=ollama_model,
+        ollama_request_timeout_seconds=ollama_request_timeout_seconds,
+        ollama_agent_model=ollama_agent_model,
         chatgpt_api_key_env_var=chatgpt_api_key_env_var,
         chatgpt_model=chatgpt_model,
         chatgpt_timeout_seconds=chatgpt_timeout_seconds,

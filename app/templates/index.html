@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block title %}PUXAI Workspace{% endblock %}
+
+{% block content %}
+  <section class="hero-card mb-4">
+    <div>
+      <span class="eyebrow">Agentic Workspace</span>
+      <h1 class="display-title">{{ board.board_title }}</h1>
+      <p class="hero-copy">{{ board.board_summary }}</p>
+      <div class="hero-actions">
+        <a class="btn btn-light" href="{{ url_for('new_task') }}">New task</a>
+        <form action="{{ url_for('refresh_mermaid') }}" method="post">
+          <button class="btn btn-light" type="submit">Refresh Mermaid Views</button>
+        </form>
+        <button
+          class="btn btn-outline-light"
+          type="button"
+          id="sideRailToggle"
+          aria-expanded="true"
+          aria-controls="workspaceSideRail"
+        >
+          Hide AI side
+        </button>
+      </div>
+    </div>
+    <div class="hero-metrics">
+      <div class="hero-metric">
+        <span class="hero-metric-label">Tasks</span>
+        <strong>{{ board.tasks|length }}</strong>
+      </div>
+      <div class="hero-metric">
+        <span class="hero-metric-label">Agent Runs</span>
+        <strong>{{ board.agent_runs|length }}</strong>
+      </div>
+      <div class="hero-metric">
+        <span class="hero-metric-label">Models</span>
+        <strong>{{ ollama_status.models|length if ollama_status.available else 0 }}</strong>
+      </div>
+    </div>
+  </section>
+
+  <div class="layout-grid">
+    <main>
+      <section class="glass-panel p-4 mb-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Planning Layer</div>
+            <h2>Live kanban surface</h2>
+          </div>
+          <div class="section-note">Drag cards between columns, let agents change status, and keep Mermaid close to the work.</div>
+        </div>
+        <div class="board-scroll">
+          <div class="kanban-board" id="kanban-board">
+            {% for status in board.statuses %}
+              <section class="kanban-column" data-status="{{ status }}">
+                <header class="kanban-column-head">
+                  <h3>{{ status }}</h3>
+                  <span>{{ tasks_by_status[status]|length }}</span>
+                </header>
+                <div class="kanban-task-stack" data-dropzone="{{ status }}">
+                  {% for task in tasks_by_status[status] %}
+                    <article class="task-card" draggable="true" data-task-id="{{ task.id }}">
+                      <div class="task-card-top">
+                        <div>
+                          <span class="priority-pill priority-{{ task.priority|lower|replace(' ', '-') }}">{{ task.priority }}</span>
+                          <h4>{{ task.title }}</h4>
+                        </div>
+                        <div class="drag-badge">Drag</div>
+                      </div>
+                      <p class="task-summary">{{ task.summary }}</p>
+                      <div class="task-meta-row">
+                        <span>{{ task.owner }}</span>
+                        <span>{{ task.updated_at[:10] }}</span>
+                      </div>
+                      {% if task.labels %}
+                        <div class="tag-row">
+                          {% for label in task.labels %}
+                            <span class="tag-chip">{{ label }}</span>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                      {% if task.checklist %}
+                        <div class="checklist-list">
+                          {% for item in task.checklist %}
+                            <form action="{{ url_for('toggle_check', task_id=task.id) }}" method="post" class="check-item">
+                              <input type="hidden" name="item_index" value="{{ loop.index0 }}">
+                              <button type="submit" class="check-toggle {% if item.done %}is-done{% endif %}">
+                                {% if item.done %}✓{% else %}○{% endif %}
+                              </button>
+                              <span class="{% if item.done %}text-decoration-line-through text-muted{% endif %}">{{ item.text }}</span>
+                            </form>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                      {% if task.agent_brief %}
+                        <div class="task-brief">
+                          <strong>Next move:</strong> {{ task.agent_brief }}
+                        </div>
+                      {% endif %}
+                      {% if task.latest_agent_notes %}
+                        <div class="task-notes">{{ task.latest_agent_notes }}</div>
+                      {% endif %}
+                      {% if task.last_executor_notes %}
+                        <div class="task-notes executor-notes">{{ task.last_executor_notes }}</div>
+                      {% endif %}
+
+                      <div class="task-action-row">
+                        <form action="{{ url_for('task_agent', task_id=task.id) }}" method="post" class="flex-fill">
+                          <input type="hidden" name="next" value="{{ url_for('index') }}">
+                          <button class="btn btn-sm btn-outline-primary w-100" type="submit">Run agent</button>
+                        </form>
+                        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('edit_task', task_id=task.id) }}">Edit</a>
+                        <form action="{{ url_for('move_task', task_id=task.id) }}" method="post" class="compact-form">
+                          <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+                            {% for option in board.statuses %}
+                              <option value="{{ option }}" {% if option == task.status %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                          </select>
+                        </form>
+                      </div>
+
+                      <details class="task-detail-shell">
+                        <summary>Task context and artifacts</summary>
+
+                        <div class="task-detail-grid task-detail-grid-compact">
+                          <section class="task-detail-panel">
+                            <div class="mini-label">Task context</div>
+                            {% if task.repo_context.summary %}
+                              <div class="context-block">
+                                <div class="mini-label">Repo summary</div>
+                                <div class="context-summary">{{ task.repo_context.summary }}</div>
+                              </div>
+                            {% endif %}
+                            {% if task.repo_context.selected_files %}
+                              <div class="context-block">
+                                <div class="mini-label">Files</div>
+                                <div class="file-pill-grid">
+                                  {% for file in task.repo_context.selected_files[:6] %}
+                                    <span class="file-pill">{{ file }}</span>
+                                  {% endfor %}
+                                </div>
+                              </div>
+                            {% endif %}
+                            {% if task.repo_context.documents %}
+                              <div class="context-block">
+                                <div class="mini-label">Documents</div>
+                                {% for document in task.repo_context.documents[:4] %}
+                                  <div class="document-mini-card">
+                                    <strong>{{ document.path }}</strong>
+                                    <div class="small text-muted">{{ document.summary }}</div>
+                                  </div>
+                                {% endfor %}
+                              </div>
+                            {% endif %}
+                          </section>
+
+                          <section class="task-detail-panel">
+                            <div class="mini-label">Mermaid previews</div>
+                            <div class="task-artifact-preview-grid task-artifact-preview-grid-compact">
+                              {% for artifact_name, artifact_body in task.mermaid_artifacts.items() %}
+                                {% if artifact_body %}
+                                  <div class="artifact-preview-card artifact-preview-card-compact">
+                                    <div class="mini-label">{{ artifact_name.replace('_', ' ') }}</div>
+                                    <pre class="mermaid">{{ artifact_body }}</pre>
+                                  </div>
+                                {% endif %}
+                              {% endfor %}
+                            </div>
+                          </section>
+
+                          <section class="task-detail-panel">
+                            <div class="mini-label">Recent activity</div>
+                            {% if task.executor_runs %}
+                              <div class="context-block">
+                                <div class="mini-label">Executor runs</div>
+                                {% for run in task.executor_runs[:4] %}
+                                  <div class="document-mini-card">
+                                    <strong>{{ run.kind }}</strong>
+                                    <div class="small text-muted">{{ run.summary }}</div>
+                                  </div>
+                                {% endfor %}
+                              </div>
+                            {% endif %}
+                            <div class="context-block">
+                              <a class="btn btn-sm btn-outline-dark w-100" href="{{ url_for('edit_task', task_id=task.id) }}">Open full task workspace</a>
+                            </div>
+                          </section>
+                        </div>
+                      </details>
+                    </article>
+                  {% else %}
+                    <div class="empty-column-card">No tasks here yet.</div>
+                  {% endfor %}
+                </div>
+              </section>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+
+      <section class="glass-panel p-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Board Mermaid</div>
+            <h2>Kanban and stitched board views</h2>
+          </div>
+          <div class="section-note">Open either preview for a larger rendered view of the board structure and flow.</div>
+        </div>
+        <div class="task-artifact-preview-grid board-artifacts board-artifacts-expanded">
+          <button
+            class="artifact-preview-card board-artifact-button"
+            type="button"
+            data-mermaid-modal-title="Board kanban"
+            data-mermaid-modal-body="{{ board.board_mermaid_artifacts.kanban|e }}"
+          >
+            <div class="mini-label">Board kanban</div>
+            <pre class="mermaid mermaid-board">{{ board.board_mermaid_artifacts.kanban }}</pre>
+          </button>
+          <button
+            class="artifact-preview-card board-artifact-button"
+            type="button"
+            data-mermaid-modal-title="Stitched board"
+            data-mermaid-modal-body="{{ board.board_mermaid_artifacts.stitched|e }}"
+          >
+            <div class="mini-label">Stitched board</div>
+            <pre class="mermaid mermaid-board">{{ board.board_mermaid_artifacts.stitched }}</pre>
+          </button>
+        </div>
+      </section>
+
+      <div class="two-up-grid mt-4">
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Narrative</div>
+              <h2>Board summary and next ideas</h2>
+            </div>
+          </div>
+          <form action="{{ url_for('update_summary') }}" method="post" class="stack-form">
+            <div>
+              <label class="form-label">Board summary</label>
+              <textarea class="form-control" name="board_summary" rows="4">{{ board.board_summary }}</textarea>
+            </div>
+            <div>
+              <label class="form-label">Ideas, one per line</label>
+              <textarea class="form-control" name="ideas" rows="6">{{ board.ideas|join('\n') }}</textarea>
+            </div>
+            <button class="btn btn-outline-dark" type="submit">Save narrative</button>
+          </form>
+        </section>
+
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Recent Agent Runs</div>
+              <h2>Execution trace</h2>
+            </div>
+          </div>
+          <div class="run-list">
+            {% for run in board.agent_runs[:10] %}
+              <article class="run-card">
+                <div class="run-meta">{{ run.kind }} • {{ run.created_at[:19].replace('T', ' ') }}</div>
+                <div class="run-summary">{{ run.summary }}</div>
+              </article>
+            {% else %}
+              <div class="empty-column-card">No agent runs yet. Trigger one from a task card.</div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="side-rail" id="workspaceSideRail">
+      <section class="chat-panel card shadow-sm mb-4">
+        <div class="card-header">
+          <div class="fw-semibold">Assistant</div>
+          <div class="small text-muted">Ask for next steps, product shaping, executor ideas, or Mermaid refinement.</div>
+        </div>
+        <div class="card-body p-0">
+          <div class="chat-history" id="chat-history">
+            {% for message in board.chat_history %}
+              <div class="chat-message {{ message.role }}">
+                <div class="chat-role">{{ message.role }}</div>
+                <div class="chat-message-body">{{ message.content }}</div>
+              </div>
+            {% else %}
+              <div class="chat-message assistant">
+                <div class="chat-role">assistant</div>
+                <div class="chat-message-body">I can help plan the next slice of the product, suggest executor actions, or refine the kanban board.</div>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="border-top p-3">
+            <form id="chat-form">
+              <textarea class="form-control mb-2" id="chat-message" rows="4" placeholder="Ask PUXAI what to build next or which executor action to run."></textarea>
+              <button class="btn btn-primary w-100" type="submit">Send to Ollama</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="glass-panel p-4 mb-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Ollama</div>
+            <h2>Model status</h2>
+          </div>
+        </div>
+        <div class="status-stack">
+          <div class="status-row">
+            <span>Server</span>
+            <strong class="{% if ollama_status.available %}text-success{% else %}text-danger{% endif %}">
+              {% if ollama_status.available %}Online{% else %}Offline{% endif %}
+            </strong>
+          </div>
+          <div class="status-row"><span>URL</span><code>{{ ollama_status.url }}</code></div>
+          <div class="status-row"><span>Default model</span><code>{{ ollama_status.default_model }}</code></div>
+          <div class="status-row"><span>Agent model</span><code>{{ ollama_status.agent_model }}</code></div>
+        </div>
+        {% if ollama_status.models %}
+          <div class="tag-row mt-3">
+            {% for model in ollama_status.models %}
+              <span class="tag-chip">{{ model }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="glass-panel p-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Local Launchers</div>
+            <h2>Cross-platform quick actions</h2>
+          </div>
+        </div>
+        <div class="launcher-grid">
+          {% for launchable in launchable_apps %}
+            <form action="{{ url_for('launch_app', app_id=launchable.id) }}" method="post">
+              <button class="launcher-tile" type="submit">
+                <span class="launcher-name">{{ launchable.name }}</span>
+                <span class="launcher-category">{{ launchable.category or 'app' }}</span>
+              </button>
+            </form>
+          {% else %}
+            <div class="empty-column-card">No launcher commands are configured for this platform yet.</div>
+          {% endfor %}
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <div class="modal fade" id="mermaidPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content mermaid-modal-content">
+        <div class="modal-header">
+          <div>
+            <div class="section-kicker mb-1">Board Mermaid</div>
+            <h2 class="modal-title fs-4" id="mermaidPreviewModalLabel">Mermaid preview</h2>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mermaid-modal-diagram-shell">
+            <div class="mermaid-modal-diagram" id="mermaidPreviewModalDiagram"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
