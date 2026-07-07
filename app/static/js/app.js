@@ -109,6 +109,23 @@ const mermaidModalDiagram = document.getElementById("mermaidPreviewModalDiagram"
 if (mermaidModalElement && mermaidModalTitle && mermaidModalDiagram && window.bootstrap) {
   const mermaidModal = new window.bootstrap.Modal(mermaidModalElement);
   let mermaidModalRenderIndex = 0;
+  let pendingMermaidRenderNode = null;
+
+  mermaidModalElement.addEventListener("shown.bs.modal", async () => {
+    if (!pendingMermaidRenderNode || !window.puxaiMermaid) {
+      return;
+    }
+    try {
+      await window.puxaiMermaid.run({
+        nodes: [pendingMermaidRenderNode],
+      });
+    } catch (error) {
+      console.error("Mermaid modal render failed", error);
+    } finally {
+      pendingMermaidRenderNode = null;
+    }
+  });
+
   document.querySelectorAll("[data-mermaid-modal-body]").forEach((button) => {
     button.addEventListener("click", async () => {
       const title = button.dataset.mermaidModalTitle || "Mermaid preview";
@@ -122,17 +139,8 @@ if (mermaidModalElement && mermaidModalTitle && mermaidModalDiagram && window.bo
       renderNode.id = renderId;
       renderNode.textContent = body;
       mermaidModalDiagram.appendChild(renderNode);
+      pendingMermaidRenderNode = renderNode;
       mermaidModal.show();
-
-      if (window.puxaiMermaid) {
-        try {
-          await window.puxaiMermaid.run({
-            nodes: [renderNode],
-          });
-        } catch (error) {
-          console.error("Mermaid modal render failed", error);
-        }
-      }
     });
   });
 }
