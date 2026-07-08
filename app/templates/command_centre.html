@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block title %}Command Centre{% endblock %}
+
+{% block content %}
+  <section class="hero-card mb-4">
+    <div>
+      <span class="eyebrow">Daily Operating View</span>
+      <h1 class="display-title">Command Centre</h1>
+      <p class="hero-copy">A read-only daily view of tasks, notes, todos, repositories, and agents so you can decide what to push next without digging through the whole board.</p>
+      <div class="small text-white-50 mb-3">
+        Active workspace: <strong>{{ active_workspace.name }}</strong>
+        {% if active_workspace.description %}
+          • {{ active_workspace.description }}
+        {% endif %}
+      </div>
+      <div class="hero-actions">
+        <a class="btn btn-light" href="{{ url_for('index') }}">Open workspace board</a>
+        <a class="btn btn-outline-light" href="{{ url_for('new_task') }}">New task</a>
+      </div>
+    </div>
+    <div class="hero-metrics">
+      <div class="hero-metric">
+        <span class="hero-metric-label">Tasks</span>
+        <strong>{{ dashboard.task_summary.total }}</strong>
+      </div>
+      <div class="hero-metric">
+        <span class="hero-metric-label">Open Todos</span>
+        <strong>{{ dashboard.todo_summary.open_items|length }}</strong>
+      </div>
+      <div class="hero-metric">
+        <span class="hero-metric-label">Linked Repos</span>
+        <strong>{{ dashboard.repo_summary.linked_repo_tasks|length }}</strong>
+      </div>
+    </div>
+  </section>
+
+  <div class="command-centre-grid">
+    <main class="command-centre-main">
+      <section class="glass-panel p-4 mb-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Daily Summary</div>
+            <h2>{{ "AI-generated daily summary" if dashboard.daily_summary.mode == "ai" else "Deterministic daily summary" }}</h2>
+          </div>
+          <div class="section-note">This summary never mutates board data. It only reflects the current workspace state.</div>
+        </div>
+        <div class="markdown-body">{{ render_markdown(dashboard.daily_summary.text) }}</div>
+      </section>
+
+      <section class="glass-panel p-4 mb-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Task Summary</div>
+            <h2>Board health</h2>
+          </div>
+          <div class="section-note">Status counts, priority pressure, and the freshest task movement.</div>
+        </div>
+        <div class="metric-grid mb-4">
+          <article class="metric-card">
+            <span class="metric-label">Total tasks</span>
+            <strong>{{ dashboard.task_summary.total }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Blocked</span>
+            <strong>{{ dashboard.task_summary.blocked_count }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">High priority</span>
+            <strong>{{ dashboard.task_summary.high_priority_count }}</strong>
+          </article>
+        </div>
+        <div class="task-artifact-preview-grid">
+          {% for item in dashboard.task_summary.by_status %}
+            <article class="artifact-preview-card">
+              <div class="mini-label">{{ item.status }}</div>
+              <strong>{{ item.count }}</strong>
+            </article>
+          {% endfor %}
+        </div>
+        <div class="section-heading mt-4">
+          <div>
+            <div class="section-kicker">Recently Updated</div>
+            <h2>Latest task movement</h2>
+          </div>
+        </div>
+        <div class="stacked-list">
+          {% for task in dashboard.task_summary.recently_updated %}
+            <a class="stacked-list-card" href="{{ url_for('edit_task', task_id=task.id) }}">
+              <div>
+                <strong>{{ task.title }}</strong>
+                <div class="small text-muted">{{ task.summary or "No summary yet." }}</div>
+              </div>
+              <div class="text-end">
+                <div class="priority-pill priority-{{ task.priority|lower|replace(' ', '-') }}">{{ task.priority }}</div>
+                <div class="small text-muted mt-2">{{ task.status }} • {{ task.updated_at[:16]|replace('T', ' ') }}</div>
+              </div>
+            </a>
+          {% else %}
+            <div class="empty-column-card">No tasks have been updated yet.</div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="glass-panel p-4 mb-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Suggested Next Actions</div>
+            <h2>What to do next</h2>
+          </div>
+          <div class="section-note">Deterministic suggestions based on task state, todos, and repo context.</div>
+        </div>
+        <div class="stacked-list">
+          {% for suggestion in dashboard.suggested_actions %}
+            <a class="stacked-list-card" href="{{ suggestion.href }}">
+              <div>
+                <strong>{{ suggestion.title }}</strong>
+                <div class="small text-muted">{{ suggestion.summary }}</div>
+              </div>
+              <span class="tag-chip">Open</span>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="glass-panel p-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Repo Watch</div>
+            <h2>Linked repositories</h2>
+          </div>
+          <div class="section-note">A quick watch list for repo-linked tasks, dirty working trees, and stale scans.</div>
+        </div>
+        <div class="metric-grid mb-4">
+          <article class="metric-card">
+            <span class="metric-label">Linked repos</span>
+            <strong>{{ dashboard.repo_summary.linked_repo_tasks|length }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Uncommitted changes</span>
+            <strong>{{ dashboard.repo_summary.dirty_repo_tasks|length }}</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Need scan</span>
+            <strong>{{ dashboard.repo_summary.tasks_needing_repo_scan|length }}</strong>
+          </article>
+        </div>
+        <div class="stacked-list">
+          {% for task in dashboard.repo_summary.linked_repo_tasks %}
+            <a class="stacked-list-card" href="{{ url_for('edit_task', task_id=task.id) }}">
+              <div>
+                <strong>{{ task.title }}</strong>
+                <div class="small text-muted">{{ task.repo_context.repo_path }}</div>
+                {% if task.repo_context.detected_frameworks %}
+                  <div class="tag-row mt-2">
+                    {% for framework in task.repo_context.detected_frameworks[:4] %}
+                      <span class="tag-chip">{{ framework }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+              <div class="text-end">
+                {% if task.repo_context.git_status %}
+                  <div class="small text-danger">{{ task.repo_context.git_status|length }} uncommitted change(s)</div>
+                {% endif %}
+                <div class="small text-muted mt-2">
+                  {% if task.repo_context.last_ingested_at %}
+                    Scanned {{ task.repo_context.last_ingested_at[:16]|replace('T', ' ') }}
+                  {% else %}
+                    No repo scan yet
+                  {% endif %}
+                </div>
+              </div>
+            </a>
+          {% else %}
+            <div class="empty-column-card">No tasks are currently linked to repositories.</div>
+          {% endfor %}
+        </div>
+      </section>
+    </main>
+
+    <aside class="command-centre-side">
+      <section class="glass-panel p-4 mb-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">AI and Agents</div>
+            <h2>Backend status</h2>
+          </div>
+        </div>
+        <div class="metric-grid metric-grid-single mb-3">
+          <article class="metric-card">
+            <span class="metric-label">Backend</span>
+            <strong>{{ dashboard.agent_status.backend }}</strong>
+            <div class="small text-muted mt-2">
+              {% if dashboard.agent_status.available %}
+                Online • {{ dashboard.agent_status.models|length }} model(s)
+              {% else %}
+                Offline
+              {% endif %}
+            </div>
+          </article>
+        </div>
+        <div class="stacked-list">
+          {% for run in dashboard.agent_status.recent_runs %}
+            <article class="stacked-list-card stacked-list-card-static">
+              <div>
+                <strong>{{ run.kind or "Agent run" }}</strong>
+                <div class="small text-muted">{{ run.summary or run.notes or "No summary recorded." }}</div>
+              </div>
+              <div class="small text-muted text-end">{{ run.created_at[:16]|replace('T', ' ') if run.created_at else "" }}</div>
+            </article>
+          {% else %}
+            <div class="empty-column-card">No recent agent or executor runs yet.</div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="glass-panel p-4 mb-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Todo Inbox</div>
+            <h2>Open and completed</h2>
+          </div>
+        </div>
+        <div class="stacked-list mb-3">
+          {% for todo in dashboard.todo_summary.open_items %}
+            <article class="stacked-list-card stacked-list-card-static">
+              <div>
+                <strong>{{ todo.text }}</strong>
+                <div class="small text-muted">Open todo</div>
+              </div>
+            </article>
+          {% else %}
+            <div class="empty-column-card">No open todo items.</div>
+          {% endfor %}
+        </div>
+        <div class="mini-label mb-2">Recently completed</div>
+        <div class="stacked-list">
+          {% for todo in dashboard.todo_summary.recent_completed %}
+            <article class="stacked-list-card stacked-list-card-static">
+              <div>
+                <strong>{{ todo.text }}</strong>
+                <div class="small text-muted">Completed {{ todo.updated_at[:16]|replace('T', ' ') }}</div>
+              </div>
+            </article>
+          {% else %}
+            <div class="empty-column-card">No completed todo items yet.</div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="glass-panel p-4 mb-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Recent Notes</div>
+            <h2>Markdown capture</h2>
+          </div>
+        </div>
+        <div class="stacked-list">
+          {% for note in dashboard.notes_summary.recent_notes %}
+            <article class="stacked-list-card stacked-list-card-static">
+              <div>
+                <strong>{{ note.title }}</strong>
+                <div class="small text-muted">{{ note.updated_at[:16]|replace('T', ' ') }}</div>
+                <div class="small text-muted mt-2">{{ note.body[:180] ~ ("..." if note.body|length > 180 else "") }}</div>
+              </div>
+            </article>
+          {% else %}
+            <div class="empty-column-card">No notes captured yet.</div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="glass-panel p-4">
+        <div class="section-heading">
+          <div>
+            <div class="section-kicker">Recent Activity</div>
+            <h2>Board timeline</h2>
+          </div>
+        </div>
+        <div class="stacked-list">
+          {% for event in dashboard.recent_activity %}
+            <article class="stacked-list-card stacked-list-card-static">
+              <div>
+                <strong>{{ event.title }}</strong>
+                <div class="small text-muted">{{ event.summary }}</div>
+              </div>
+              <div class="small text-muted text-end">{{ event.created_at[:16]|replace('T', ' ') }}</div>
+            </article>
+          {% else %}
+            <div class="empty-column-card">No activity recorded yet.</div>
+          {% endfor %}
+        </div>
+      </section>
+    </aside>
+  </div>
+{% endblock %}

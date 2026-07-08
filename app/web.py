@@ -103,6 +103,18 @@ def create_app(
             os_name=os_name,
         )
 
+    @app.get("/command-centre")
+    def command_centre() -> str:
+        store = _board_store(app)
+        board = store.load()
+        dashboard = _build_command_centre_payload(board, store, config)
+        return render_template(
+            "command_centre.html",
+            board=board,
+            dashboard=dashboard,
+            recent_activity=store.list_recent_activity(12),
+        )
+
     @app.get("/settings")
     def settings() -> str:
         settings_config = load_config(app.config["CONFIG_PATH"])
@@ -989,6 +1001,216 @@ def _tasks_by_status(board: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     for task in board["tasks"]:
         grouped.setdefault(task["status"], []).append(task)
     return grouped
+
+
+def _recent_items(items: list[dict[str, Any]], field_name: str, limit: int) -> list[dict[str, Any]]:
+    return sorted(
+        items,
+        key=lambda item: str(item.get(field_name, "")),
+        reverse=True,
+    )[:limit]
+
+
+def _linked_repo_tasks(board: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        task
+        for task in board.get("tasks", [])
+        if str(task.get("repo_context", {}).get("repo_path", "")).strip()
+    ]
+
+
+def _tasks_needing_repo_scan(board: dict[str, Any]) -> list[dict[str, Any]]:
+    needing_scan: list[dict[str, Any]] = []
+    for task in _linked_repo_tasks(board):
+        repo_context = task.get("repo_context", {})
+        if not repo_context.get("last_ingested_at") or not repo_context.get("selected_files"):
+            needing_scan.append(task)
+    return needing_scan
+
+
+def _dirty_repo_tasks(board: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        task
+        for task in _linked_repo_tasks(board)
+        if task.get("repo_context", {}).get("git_status")
+    ]
+
+
+def _build_command_centre_payload(
+    board: dict[str, Any],
+    store: BoardStore,
+    config: AppConfig,
+) -> dict[str, Any]:
+    tasks = list(board.get("tasks", []))
+    todo_items = list(board.get("todo_items", []))
+    notes = list(board.get("notes", []))
+    linked_repo_tasks = _linked_repo_tasks(board)
+    dirty_repo_tasks = _dirty_repo_tasks(board)
+    tasks_needing_repo_scan = _tasks_needing_repo_scan(board)
+    recent_agent_runs = list(board.get("agent_runs", []))[:5]
+    ai_status = _ai_status(config)
+
+    dashboard = {
+        "task_summary": {
+            "total": len(tasks),
+            "blocked_count": sum(1 for task in tasks if task.get("status") == "Blocked"),
+            "high_priority_count": sum(1 for task in tasks if str(task.get("priority", "")).strip().lower() == "high"),
+            "by_status": [
+                {"status": status, "count": len(_tasks_by_status(board).get(status, []))}
+                for status in board.get("statuses", [])
+            ],
+            "recently_updated": _recent_items(tasks, "updated_at", 5),
+        },
+        "agent_status": {
+            **ai_status,
+            "recent_runs": recent_agent_runs,
+        },
+        "todo_summary": {
+            "open_items": [item for item in todo_items if not item.get("done")][:8],
+            "recent_completed": _recent_items(
+                [item for item in todo_items if item.get("done")],
+                "updated_at",
+                5,
+            ),
+        },
+        "notes_summary": {
+            "recent_notes": _recent_items(notes, "updated_at", 5),
+        },
+        "repo_summary": {
+            "linked_repo_tasks": linked_repo_tasks,
+            "dirty_repo_tasks": dirty_repo_tasks,
+            "tasks_needing_repo_scan": tasks_needing_repo_scan,
+        },
+        "recent_activity": store.list_recent_activity(8),
+    }
+    dashboard["suggested_actions"] = _build_command_centre_suggestions(board, dashboard)
+    dashboard["daily_summary"] = _build_command_centre_daily_summary(board, dashboard, config)
+    return dashboard
+
+
+def _build_command_centre_suggestions(
+    board: dict[str, Any],
+    dashboard: dict[str, Any],
+) -> list[dict[str, str]]:
+    suggestions: list[dict[str, str]] = []
+    blocked_count = dashboard["task_summary"]["blocked_count"]
+    if blocked_count:
+        suggestions.append(
+            {
+                "title": "Review blocked tasks",
+                "summary": f"{blocked_count} task{'s are' if blocked_count != 1 else ' is'} blocked and need attention.",
+                "href": url_for("index"),
+            }
+        )
+
+    repo_scan_count = len(dashboard["repo_summary"]["tasks_needing_repo_scan"])
+    if repo_scan_count:
+        suggestions.append(
+            {
+                "title": "Run repo scan on linked repos",
+                "summary": f"{repo_scan_count} linked repo task{'s need' if repo_scan_count != 1 else ' needs'} a fresh scan.",
+                "href": url_for("index"),
+            }
+        )
+
+    open_todo_count = len(dashboard["todo_summary"]["open_items"])
+    if open_todo_count:
+        suggestions.append(
+            {
+                "title": "Turn recent todos into tasks",
+                "summary": f"{open_todo_count} open todo item{'s are' if open_todo_count != 1 else ' is'} waiting in the inbox.",
+                "href": url_for("index"),
+            }
+        )
+
+    ready_high_priority = [
+        task
+        for task in board.get("tasks", [])
+        if task.get("status") == "Ready" and str(task.get("priority", "")).strip().lower() == "high"
+    ]
+    if ready_high_priority:
+        suggestions.append(
+            {
+                "title": "Run agent on high-priority ready tasks",
+                "summary": f"{len(ready_high_priority)} ready high-priority task{'s can' if len(ready_high_priority) != 1 else ' can'} be advanced with an agent run.",
+                "href": url_for("index"),
+            }
+        )
+
+    if not suggestions:
+        suggestions.append(
+            {
+                "title": "Keep momentum on active work",
+                "summary": "No immediate blockers were detected. Review recently updated tasks and choose the next push.",
+                "href": url_for("index"),
+            }
+        )
+    return suggestions
+
+
+def _build_command_centre_daily_summary(
+    board: dict[str, Any],
+    dashboard: dict[str, Any],
+    config: AppConfig,
+) -> dict[str, str]:
+    deterministic = _deterministic_command_centre_summary(board, dashboard)
+    backend = _ai_backend(config)
+    if backend is None:
+        return {"mode": "deterministic", "text": deterministic}
+
+    try:
+        if not backend.is_available():
+            return {"mode": "deterministic", "text": deterministic}
+        prompt = (
+            "Summarise this local-first work dashboard in concise markdown.\n"
+            "Focus on what needs attention today, repo hygiene, and the best next move.\n\n"
+            f"Board title: {board.get('board_title', 'PUXAI Workspace')}\n"
+            f"Total tasks: {dashboard['task_summary']['total']}\n"
+            f"Blocked tasks: {dashboard['task_summary']['blocked_count']}\n"
+            f"High-priority tasks: {dashboard['task_summary']['high_priority_count']}\n"
+            f"Open todos: {len(dashboard['todo_summary']['open_items'])}\n"
+            f"Completed todos: {len(dashboard['todo_summary']['recent_completed'])}\n"
+            f"Recent notes: {len(dashboard['notes_summary']['recent_notes'])}\n"
+            f"Linked repos: {len(dashboard['repo_summary']['linked_repo_tasks'])}\n"
+            f"Repos with uncommitted changes: {len(dashboard['repo_summary']['dirty_repo_tasks'])}\n"
+            f"Tasks needing repo scan: {len(dashboard['repo_summary']['tasks_needing_repo_scan'])}\n"
+            f"Recent suggestions: {[item['title'] for item in dashboard['suggested_actions']]}\n"
+        )
+        text = backend.generate_text(
+            config.ollama_model,
+            prompt,
+            system="Respond in concise markdown with one short paragraph and a short bullet list.",
+        ).strip()
+        if text:
+            return {"mode": "ai", "text": text}
+    except Exception:  # noqa: BLE001
+        LOGGER.exception("Command Centre AI summary failed")
+    return {"mode": "deterministic", "text": deterministic}
+
+
+def _deterministic_command_centre_summary(
+    board: dict[str, Any],
+    dashboard: dict[str, Any],
+) -> str:
+    by_status = ", ".join(
+        f"{entry['status']}: {entry['count']}"
+        for entry in dashboard["task_summary"]["by_status"]
+        if entry["count"]
+    ) or "No tasks yet"
+    recent_task_titles = ", ".join(
+        task.get("title", "Untitled task")
+        for task in dashboard["task_summary"]["recently_updated"][:3]
+    ) or "No recent task updates yet"
+    return (
+        f"**{board.get('board_title', 'PUXAI Workspace')}** has "
+        f"{dashboard['task_summary']['total']} tasks across the board.\n\n"
+        f"- Status spread: {by_status}\n"
+        f"- Blocked tasks: {dashboard['task_summary']['blocked_count']}\n"
+        f"- High-priority tasks: {dashboard['task_summary']['high_priority_count']}\n"
+        f"- Open todos: {len(dashboard['todo_summary']['open_items'])}\n"
+        f"- Linked repos: {len(dashboard['repo_summary']['linked_repo_tasks'])}\n"
+        f"- Focus next on: {recent_task_titles}\n"
+    )
 
 
 def _find_task(board: dict[str, Any], task_id: str) -> dict[str, Any] | None:
