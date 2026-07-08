@@ -16,7 +16,13 @@ from werkzeug.utils import secure_filename
 from app.config import AppConfig
 from app.launchers import BaseLauncher
 from app.session_history import append_launch_event
-from app.services.agent_service import board_chat_reply, draft_task_with_ai, record_agent_run, run_task_agent
+from app.services.agent_service import (
+    board_chat_action_plan,
+    board_chat_reply,
+    draft_task_with_ai,
+    record_agent_run,
+    run_task_agent,
+)
 from app.services.board_store import (
     BoardStore,
     default_mermaid_artifacts,
@@ -119,48 +125,17 @@ def create_app(
         if not title:
             flash("A task title is required.", "warning")
             return redirect(url_for("new_task"))
-
-        task = {
-            "id": new_id(),
-            "title": title,
-            "summary": summary,
-            "status": status if status in board["statuses"] else board["statuses"][0],
-            "priority": priority,
-            "labels": labels,
-            "owner": owner,
-            "checklist": [],
-            "agent_brief": "",
-            "latest_agent_notes": "",
-            "created_at": utc_now(),
-            "updated_at": utc_now(),
-            "mermaid_artifacts": default_mermaid_artifacts(),
-            "repo_context": default_repo_context(),
-            "executor_runs": [],
-            "last_executor_action": "",
-            "last_executor_notes": "",
-        }
-
-        if ai_enrich and config.enable_ai:
-            client = _ollama_client(config)
-            if client and client.is_available():
-                ai_payload = draft_task_with_ai(client, config.ollama_agent_model, board, title, summary)
-                if ai_payload:
-                    task["summary"] = ai_payload.get("summary", task["summary"])
-                    task["priority"] = ai_payload.get("priority", task["priority"])
-                    task["labels"] = [label for label in ai_payload.get("labels", task["labels"]) if label]
-                    task["owner"] = ai_payload.get("owner", task["owner"]) or task["owner"]
-                    task["checklist"] = [
-                        {"text": str(item).strip(), "done": False}
-                        for item in ai_payload.get("checklist", [])
-                        if str(item).strip()
-                    ]
-                    task["agent_brief"] = ai_payload.get("agent_brief", "")
-                    task["mermaid_artifacts"] = {
-                        **task["mermaid_artifacts"],
-                        **(ai_payload.get("mermaid_artifacts", {}) or {}),
-                    }
-                    task["repo_context"]["notes"] = str(ai_payload.get("repo_context_notes", "")).strip()
-
+        task = _build_task_payload(
+            board=board,
+            title=title,
+            summary=summary,
+            status=status,
+            priority=priority,
+            labels=labels,
+            owner=owner,
+            ai_enrich=ai_enrich,
+            config=config,
+        )
         _board_store(app).add_task(task)
         _refresh_mermaid(app)
         flash(f"Added task '{title}'.", "success")
@@ -237,52 +212,17 @@ def create_app(
             flash("Unknown capture type.", "warning")
             return redirect(url_for("index"))
 
-        task = {
-            "id": new_id(),
-            "title": title or "Captured task",
-            "summary": summary,
-            "status": board["statuses"][0],
-            "priority": "Medium",
-            "labels": labels,
-            "owner": owner,
-            "checklist": [],
-            "agent_brief": "",
-            "latest_agent_notes": "",
-            "created_at": utc_now(),
-            "updated_at": utc_now(),
-            "mermaid_artifacts": default_mermaid_artifacts(),
-            "repo_context": default_repo_context(),
-            "executor_runs": [],
-            "last_executor_action": "",
-            "last_executor_notes": "",
-        }
-
-        if config.enable_ai:
-            client = _ollama_client(config)
-            if client and client.is_available():
-                ai_payload = draft_task_with_ai(client, config.ollama_agent_model, board, task["title"], task["summary"])
-                if ai_payload:
-                    task["summary"] = ai_payload.get("summary", task["summary"])
-                    task["priority"] = ai_payload.get("priority", task["priority"])
-                    task["labels"] = sorted(
-                        {
-                            *task["labels"],
-                            *[label for label in ai_payload.get("labels", []) if label],
-                        }
-                    )
-                    task["owner"] = ai_payload.get("owner", task["owner"]) or task["owner"]
-                    task["checklist"] = [
-                        {"text": str(item).strip(), "done": False}
-                        for item in ai_payload.get("checklist", [])
-                        if str(item).strip()
-                    ]
-                    task["agent_brief"] = ai_payload.get("agent_brief", "")
-                    task["mermaid_artifacts"] = {
-                        **task["mermaid_artifacts"],
-                        **(ai_payload.get("mermaid_artifacts", {}) or {}),
-                    }
-                    task["repo_context"]["notes"] = str(ai_payload.get("repo_context_notes", "")).strip()
-
+        task = _build_task_payload(
+            board=board,
+            title=title or "Captured task",
+            summary=summary,
+            status=board["statuses"][0],
+            priority="Medium",
+            labels=labels,
+            owner=owner,
+            ai_enrich=config.enable_ai,
+            config=config,
+        )
         _board_store(app).add_task(task)
         _refresh_mermaid(app)
         flash(f"Created task '{task['title']}' from {source_type}.", "success")
@@ -446,20 +386,9 @@ def create_app(
             return redirect(url_for("index"))
         draft_type = request.form.get("draft_type", "rfq").strip() or "rfq"
         recipient = request.form.get("recipient", "").strip()
-        subject = _draft_subject(task, draft_type)
-        body = _draft_body(task, draft_type)
+        draft = _create_email_draft_record(task, draft_type, recipient)
         drafts = list(task.get("email_drafts", []))
-        drafts.insert(
-            0,
-            {
-                "id": new_id(),
-                "type": draft_type,
-                "recipient": recipient,
-                "subject": subject,
-                "body": body,
-                "created_at": utc_now(),
-            },
-        )
+        drafts.insert(0, draft)
         _board_store(app).update_task(task_id, {"email_drafts": drafts[:10]})
         flash(f"Created {draft_type.upper()} email draft for '{task['title']}'.", "success")
         return redirect(url_for("edit_task", task_id=task_id))
@@ -610,6 +539,7 @@ def create_app(
             return jsonify({"ok": False, "message": "Message is required."}), 400
         board = _board_store(app).load()
         client = _ollama_client(config)
+        action_results: list[dict[str, Any]] = []
         if not client or not client.is_available():
             reply = (
                 "Ollama is not reachable right now. Start the Ollama server and model, "
@@ -617,7 +547,18 @@ def create_app(
             )
         else:
             try:
-                reply = board_chat_reply(client, config.ollama_model, board, message)
+                plan = board_chat_action_plan(client, config.ollama_model, board, message)
+                if plan and isinstance(plan.get("actions"), list):
+                    reply = str(plan.get("reply", "")).strip() or "I completed the requested actions."
+                    action_results = _execute_chat_actions(app, config, plan.get("actions", []))
+                    if action_results:
+                        action_lines = "\n".join(
+                            f"- {result['summary']}"
+                            for result in action_results
+                        )
+                        reply = f"{reply}\n\nCompleted actions:\n{action_lines}"
+                else:
+                    reply = board_chat_reply(client, config.ollama_model, board, message)
             except Exception as exc:  # noqa: BLE001
                 LOGGER.exception("Chat request failed")
                 reply = f"The assistant hit an error while contacting Ollama: {exc}"
@@ -625,7 +566,14 @@ def create_app(
         assistant_message = {"role": "assistant", "content": reply, "created_at": utc_now()}
         _board_store(app).append_chat_message(user_message)
         _board_store(app).append_chat_message(assistant_message)
-        return jsonify({"ok": True, "reply": reply, "history": board.get("chat_history", []) + [user_message, assistant_message]})
+        return jsonify(
+            {
+                "ok": True,
+                "reply": reply,
+                "actions": action_results,
+                "history": board.get("chat_history", []) + [user_message, assistant_message],
+            }
+        )
 
     @app.get("/api/ollama/status")
     def api_ollama_status() -> Any:
@@ -678,6 +626,14 @@ def _find_task(board: dict[str, Any], task_id: str) -> dict[str, Any] | None:
     return next((item for item in board.get("tasks", []) if item["id"] == task_id), None)
 
 
+def _find_note(board: dict[str, Any], note_id: str) -> dict[str, Any] | None:
+    return next((item for item in board.get("notes", []) if item["id"] == note_id), None)
+
+
+def _find_todo_item(board: dict[str, Any], todo_id: str) -> dict[str, Any] | None:
+    return next((item for item in board.get("todo_items", []) if item["id"] == todo_id), None)
+
+
 def _task_files_dir(app: Flask, task_id: str) -> Path:
     return Path(app.config["APP_CONFIG"].data_dir) / "task_files" / task_id
 
@@ -688,6 +644,66 @@ def _checklist_to_text(items: list[dict[str, Any]]) -> str:
         marker = "x" if item.get("done") else " "
         lines.append(f"- [{marker}] {item.get('text', '').strip()}")
     return "\n".join(lines)
+
+
+def _build_task_payload(
+    *,
+    board: dict[str, Any],
+    title: str,
+    summary: str,
+    status: str,
+    priority: str,
+    labels: list[str],
+    owner: str,
+    ai_enrich: bool,
+    config: AppConfig,
+) -> dict[str, Any]:
+    task = {
+        "id": new_id(),
+        "title": title,
+        "summary": summary,
+        "status": status if status in board["statuses"] else board["statuses"][0],
+        "priority": priority,
+        "labels": labels,
+        "owner": owner,
+        "checklist": [],
+        "agent_brief": "",
+        "latest_agent_notes": "",
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+        "mermaid_artifacts": default_mermaid_artifacts(),
+        "repo_context": default_repo_context(),
+        "executor_runs": [],
+        "last_executor_action": "",
+        "last_executor_notes": "",
+    }
+
+    if ai_enrich and config.enable_ai:
+        client = _ollama_client(config)
+        if client and client.is_available():
+            ai_payload = draft_task_with_ai(client, config.ollama_agent_model, board, title, summary)
+            if ai_payload:
+                task["summary"] = ai_payload.get("summary", task["summary"])
+                task["priority"] = ai_payload.get("priority", task["priority"])
+                task["labels"] = sorted(
+                    {
+                        *task["labels"],
+                        *[label for label in ai_payload.get("labels", []) if label],
+                    }
+                )
+                task["owner"] = ai_payload.get("owner", task["owner"]) or task["owner"]
+                task["checklist"] = [
+                    {"text": str(item).strip(), "done": False}
+                    for item in ai_payload.get("checklist", [])
+                    if str(item).strip()
+                ]
+                task["agent_brief"] = ai_payload.get("agent_brief", "")
+                task["mermaid_artifacts"] = {
+                    **task["mermaid_artifacts"],
+                    **(ai_payload.get("mermaid_artifacts", {}) or {}),
+                }
+                task["repo_context"]["notes"] = str(ai_payload.get("repo_context_notes", "")).strip()
+    return task
 
 
 def _parse_checklist_text(raw_text: str) -> list[dict[str, Any]]:
@@ -744,6 +760,17 @@ def _draft_body(task: dict[str, Any], draft_type: str) -> str:
         f"Notes:\n{task.get('notes', '')}\n\n"
         "Thanks."
     )
+
+
+def _create_email_draft_record(task: dict[str, Any], draft_type: str, recipient: str) -> dict[str, Any]:
+    return {
+        "id": new_id(),
+        "type": draft_type,
+        "recipient": recipient,
+        "subject": _draft_subject(task, draft_type),
+        "body": _draft_body(task, draft_type),
+        "created_at": utc_now(),
+    }
 
 
 def _build_rfq_markdown(task: dict[str, Any]) -> str:
@@ -813,3 +840,174 @@ def _render_markdown(raw_text: str) -> Markup:
         else:
             rendered_blocks.append(f"<p>{'<br>'.join(lines)}</p>")
     return Markup("".join(rendered_blocks))
+
+
+def _execute_chat_actions(
+    app: Flask,
+    config: AppConfig,
+    actions: list[Any],
+) -> list[dict[str, Any]]:
+    executed: list[dict[str, Any]] = []
+    for raw_action in actions[:6]:
+        if not isinstance(raw_action, dict):
+            continue
+        name = str(raw_action.get("name", "")).strip()
+        args = raw_action.get("args", {}) or {}
+        if not isinstance(args, dict) or not name:
+            continue
+        try:
+            result = _execute_chat_action(app, config, name, args)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.exception("Chat action failed: %s", name)
+            executed.append({"name": name, "ok": False, "summary": f"{name} failed: {exc}"})
+            continue
+        executed.append({"name": name, "ok": True, **result})
+    return executed
+
+
+def _execute_chat_action(
+    app: Flask,
+    config: AppConfig,
+    name: str,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    board = _board_store(app).load()
+
+    if name == "create_note":
+        title = str(args.get("title", "")).strip() or "Untitled note"
+        body = str(args.get("body", "")).strip()
+        if not body:
+            raise ValueError("Note body is required.")
+        note = default_note()
+        note.update({"title": title, "body": body, "updated_at": utc_now()})
+        _board_store(app).add_note(note)
+        return {"summary": f"Created note '{title}'.", "note_id": note["id"]}
+
+    if name == "create_todo":
+        text = str(args.get("text", "")).strip()
+        if not text:
+            raise ValueError("Todo text is required.")
+        todo_item = default_todo_item()
+        todo_item.update({"text": text, "updated_at": utc_now()})
+        _board_store(app).add_todo_item(todo_item)
+        return {"summary": f"Added todo '{text}'.", "todo_id": todo_item["id"]}
+
+    if name == "create_task":
+        title = str(args.get("title", "")).strip()
+        if not title:
+            raise ValueError("Task title is required.")
+        task = _build_task_payload(
+            board=board,
+            title=title,
+            summary=str(args.get("summary", "")).strip(),
+            status=str(args.get("status", board["statuses"][0])).strip(),
+            priority=str(args.get("priority", "Medium")).strip() or "Medium",
+            labels=[str(label).strip() for label in args.get("labels", []) if str(label).strip()],
+            owner=str(args.get("owner", "PUXAI")).strip() or "PUXAI",
+            ai_enrich=bool(args.get("ai_enrich", True)),
+            config=config,
+        )
+        _board_store(app).add_task(task)
+        _refresh_mermaid(app)
+        return {"summary": f"Created task '{task['title']}'.", "task_id": task["id"]}
+
+    if name == "create_task_from_note":
+        note = _find_note(board, str(args.get("note_id", "")).strip())
+        if note is None:
+            raise ValueError("Note not found.")
+        task = _build_task_payload(
+            board=board,
+            title=note["title"],
+            summary=note["body"],
+            status=board["statuses"][0],
+            priority="Medium",
+            labels=["captured", "note"],
+            owner="PUXAI",
+            ai_enrich=True,
+            config=config,
+        )
+        _board_store(app).add_task(task)
+        _refresh_mermaid(app)
+        return {"summary": f"Created task '{task['title']}' from note.", "task_id": task["id"]}
+
+    if name == "create_task_from_todo":
+        todo_item = _find_todo_item(board, str(args.get("todo_id", "")).strip())
+        if todo_item is None:
+            raise ValueError("Todo item not found.")
+        task = _build_task_payload(
+            board=board,
+            title=todo_item["text"][:100] or "Captured todo task",
+            summary=f"Task created from todo inbox item:\n\n- {todo_item['text']}",
+            status=board["statuses"][0],
+            priority="Medium",
+            labels=["captured", "todo"],
+            owner="PUXAI",
+            ai_enrich=True,
+            config=config,
+        )
+        _board_store(app).add_task(task)
+        _refresh_mermaid(app)
+        return {"summary": f"Created task '{task['title']}' from todo.", "task_id": task["id"]}
+
+    if name == "create_email_draft":
+        task = _find_task(board, str(args.get("task_id", "")).strip())
+        if task is None:
+            raise ValueError("Task not found.")
+        draft_type = str(args.get("draft_type", "rfq")).strip() or "rfq"
+        recipient = str(args.get("recipient", "")).strip()
+        draft = _create_email_draft_record(task, draft_type, recipient)
+        drafts = list(task.get("email_drafts", []))
+        drafts.insert(0, draft)
+        _board_store(app).update_task(task["id"], {"email_drafts": drafts[:10]})
+        return {"summary": f"Created {draft_type.upper()} draft for '{task['title']}'.", "task_id": task["id"]}
+
+    if name == "update_task":
+        task_id = str(args.get("task_id", "")).strip()
+        task = _find_task(board, task_id)
+        if task is None:
+            raise ValueError("Task not found.")
+        patch: dict[str, Any] = {}
+        for key in ("title", "summary", "priority", "owner", "notes", "agent_brief"):
+            if key in args:
+                value = str(args.get(key, "")).strip()
+                if value:
+                    patch[key] = value
+        if "status" in args:
+            status = str(args.get("status", "")).strip()
+            if status in board["statuses"]:
+                patch["status"] = status
+        if "labels" in args:
+            patch["labels"] = [str(label).strip() for label in args.get("labels", []) if str(label).strip()]
+        if patch:
+            _board_store(app).update_task(task_id, patch)
+            _refresh_mermaid(app)
+        return {"summary": f"Updated task '{task['title']}'.", "task_id": task_id}
+
+    if name == "move_task":
+        task_id = str(args.get("task_id", "")).strip()
+        status = str(args.get("status", "")).strip()
+        task = _find_task(board, task_id)
+        if task is None:
+            raise ValueError("Task not found.")
+        if status not in board["statuses"]:
+            raise ValueError("Status not found.")
+        _move_task_to_status(app, task_id, status)
+        return {"summary": f"Moved task '{task['title']}' to {status}.", "task_id": task_id}
+
+    if name == "run_executor":
+        task_id = str(args.get("task_id", "")).strip()
+        action = str(args.get("action", "")).strip()
+        task = _find_task(board, task_id)
+        if task is None:
+            raise ValueError("Task not found.")
+        result = execute_task_action(task, action)
+        patch = dict(result.get("task_patch", {}))
+        if patch:
+            _board_store(app).update_task(task_id, patch)
+        run = record_executor_run(task_id, action, result.get("summary", action), result)
+        _board_store(app).append_task_run(task_id, run)
+        _board_store(app).append_agent_run(run)
+        _refresh_mermaid(app)
+        return {"summary": result.get("summary", f"Executed {action}."), "task_id": task_id}
+
+    raise ValueError(f"Unsupported chat action: {name}")

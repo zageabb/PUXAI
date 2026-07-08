@@ -82,6 +82,36 @@ def board_chat_reply(
     return client.generate_text(model=model, prompt=prompt, system=AGENT_SYSTEM_PROMPT)
 
 
+def board_chat_action_plan(
+    client: OllamaClient,
+    model: str,
+    board: dict[str, Any],
+    message: str,
+) -> dict[str, Any] | None:
+    prompt = (
+        "You are an action-taking assistant inside PUXAI.\n"
+        "Return JSON only with keys: reply, actions.\n"
+        "The reply should briefly summarize what you did or why you could not do it.\n"
+        "The actions value must be an array of zero or more objects.\n"
+        "Allowed action names are: create_note, create_todo, create_task, create_task_from_note, "
+        "create_task_from_todo, create_email_draft, update_task, move_task, run_executor.\n"
+        "Action arguments must use existing ids when referencing tasks, notes, or todos.\n"
+        "For run_executor, executor action must be one of: repo_scan, diff_summary, generate_mermaid, document_parse.\n"
+        "Do not describe steps when you can call an action directly.\n"
+        "If the request is ambiguous, ask a short clarifying question in reply and return no actions.\n"
+        f"Board summary: {board.get('board_summary', '')}\n"
+        f"Tasks: {json.dumps(_compact_tasks(board), indent=2)}\n"
+        f"Notes: {json.dumps(board.get('notes', [])[:10], indent=2)}\n"
+        f"Todo inbox: {json.dumps(board.get('todo_items', [])[:20], indent=2)}\n"
+        f"Recent ideas: {json.dumps(board.get('ideas', [])[-5:])}\n"
+        f"User message: {message}\n"
+    )
+    payload, _, _ = client.generate_json(model=model, prompt=prompt, system=AGENT_SYSTEM_PROMPT)
+    if not payload:
+        return None
+    return payload
+
+
 def record_agent_run(task_id: str, kind: str, summary: str, raw: Any) -> dict[str, Any]:
     return {
         "id": new_id(),
@@ -91,3 +121,19 @@ def record_agent_run(task_id: str, kind: str, summary: str, raw: Any) -> dict[st
         "raw": raw,
         "created_at": utc_now(),
     }
+
+
+def _compact_tasks(board: dict[str, Any]) -> list[dict[str, Any]]:
+    compact: list[dict[str, Any]] = []
+    for task in board.get("tasks", [])[:30]:
+        compact.append(
+            {
+                "id": task.get("id"),
+                "title": task.get("title"),
+                "summary": task.get("summary"),
+                "status": task.get("status"),
+                "priority": task.get("priority"),
+                "labels": task.get("labels", []),
+            }
+        )
+    return compact
