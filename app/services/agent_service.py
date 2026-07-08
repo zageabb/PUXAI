@@ -4,8 +4,8 @@ import json
 from typing import Any
 
 from app.services.board_store import new_id, utc_now
+from app.services.ai_backend import AIBackend
 from app.services.mermaid_service import build_kanban_mermaid, build_stitched_board_mermaid
-from app.services.ollama_client import OllamaClient
 
 
 AGENT_SYSTEM_PROMPT = (
@@ -15,7 +15,7 @@ AGENT_SYSTEM_PROMPT = (
 
 
 def draft_task_with_ai(
-    client: OllamaClient,
+    client: AIBackend,
     model: str,
     board: dict[str, Any],
     title: str,
@@ -38,7 +38,7 @@ def draft_task_with_ai(
 
 
 def run_task_agent(
-    client: OllamaClient,
+    client: AIBackend,
     model: str,
     board: dict[str, Any],
     task: dict[str, Any],
@@ -63,7 +63,7 @@ def run_task_agent(
 
 
 def board_chat_reply(
-    client: OllamaClient,
+    client: AIBackend,
     model: str,
     board: dict[str, Any],
     message: str,
@@ -83,7 +83,7 @@ def board_chat_reply(
 
 
 def board_chat_action_plan(
-    client: OllamaClient,
+    client: AIBackend,
     model: str,
     board: dict[str, Any],
     message: str,

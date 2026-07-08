@@ -23,6 +23,7 @@ from app.services.agent_service import (
     record_agent_run,
     run_task_agent,
 )
+from app.services.ai_backend import create_ai_backend
 from app.services.board_store import (
     BoardStore,
     default_mermaid_artifacts,
@@ -34,7 +35,6 @@ from app.services.board_store import (
 )
 from app.services.executor_service import execute_task_action, record_executor_run
 from app.services.mermaid_service import build_kanban_mermaid, build_stitched_board_mermaid
-from app.services.ollama_client import OllamaClient
 from app.services.repo_context_service import ingest_repository_context
 
 LOGGER = logging.getLogger(__name__)
@@ -70,12 +70,12 @@ def create_app(
     def inject_globals() -> dict[str, Any]:
         store = _board_store(app)
         board = store.load()
-        ollama_status = _ollama_status(config)
+        ai_status = _ai_status(config)
         return {
             "app_config": config,
             "os_name": os_name,
             "launchable_apps": launcher.list_apps() if launcher else [],
-            "ollama_status": ollama_status,
+            "ai_status": ai_status,
             "workspace_list": store.list_workspaces(),
             "active_workspace": store.get_active_workspace(),
             "board_kanban_mermaid": board.get("board_mermaid_artifacts", {}).get("kanban", ""),
@@ -478,9 +478,9 @@ def create_app(
             flash("Task not found.", "warning")
             return redirect(url_for("index"))
 
-        client = _ollama_client(config)
+        client = _ai_backend(config)
         if not client or not client.is_available():
-            flash("Ollama is not reachable, so the agent run could not start.", "warning")
+            flash("The configured AI backend is not reachable, so the agent run could not start.", "warning")
             return redirect(url_for("index"))
 
         payload = run_task_agent(client, config.ollama_agent_model, board, task)
@@ -576,12 +576,12 @@ def create_app(
         if not message:
             return jsonify({"ok": False, "message": "Message is required."}), 400
         board = _board_store(app).load()
-        client = _ollama_client(config)
+        client = _ai_backend(config)
         action_results: list[dict[str, Any]] = []
         if not client or not client.is_available():
             reply = (
-                "Ollama is not reachable right now. Start the Ollama server and model, "
-                "then try again."
+                "The configured AI backend is not reachable right now. "
+                "Check `config.ini` and start the backend, then try again."
             )
         else:
             try:
@@ -599,7 +599,7 @@ def create_app(
                     reply = board_chat_reply(client, config.ollama_model, board, message)
             except Exception as exc:  # noqa: BLE001
                 LOGGER.exception("Chat request failed")
-                reply = f"The assistant hit an error while contacting Ollama: {exc}"
+                reply = f"The assistant hit an error while contacting the AI backend: {exc}"
         user_message = {"role": "user", "content": message, "created_at": utc_now()}
         assistant_message = {"role": "assistant", "content": reply, "created_at": utc_now()}
         _board_store(app).append_chat_message(user_message)
@@ -614,9 +614,13 @@ def create_app(
             }
         )
 
+    @app.get("/api/ai/status")
+    def api_ai_status() -> Any:
+        return jsonify(_ai_status(config))
+
     @app.get("/api/ollama/status")
     def api_ollama_status() -> Any:
-        return jsonify(_ollama_status(config))
+        return jsonify(_ai_status(config))
 
     return app
 
@@ -625,33 +629,30 @@ def _board_store(app: Flask) -> BoardStore:
     return app.config["BOARD_STORE"]
 
 
-def _ollama_client(config: AppConfig) -> OllamaClient | None:
-    if not config.enable_ai:
-        return None
-    return OllamaClient(config.ollama_url, timeout_seconds=config.ollama_request_timeout_seconds)
+def _ai_backend(config: AppConfig):
+    return create_ai_backend(config)
 
 
-def _ollama_status(config: AppConfig) -> dict[str, Any]:
-    client = _ollama_client(config)
+def _ai_status(config: AppConfig) -> dict[str, Any]:
+    client = _ai_backend(config)
+    backend_name = str(config.ai_backend).strip().lower() or "ollama"
+    backend_url = config.ollama_url if backend_name == "ollama" else "n/a"
+    status = {
+        "backend": backend_name,
+        "available": False,
+        "models": [],
+        "default_model": config.ollama_model,
+        "agent_model": config.ollama_agent_model,
+        "url": backend_url,
+    }
     if client is None:
-        return {"available": False, "models": [], "url": config.ollama_url}
+        return status
     try:
-        models = client.list_models()
-        return {
-            "available": True,
-            "models": models,
-            "default_model": config.ollama_model,
-            "agent_model": config.ollama_agent_model,
-            "url": config.ollama_url,
-        }
+        status["models"] = client.list_models()
+        status["available"] = client.is_available()
+        return status
     except Exception:  # noqa: BLE001
-        return {
-            "available": False,
-            "models": [],
-            "default_model": config.ollama_model,
-            "agent_model": config.ollama_agent_model,
-            "url": config.ollama_url,
-        }
+        return status
 
 
 def _tasks_by_status(board: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -772,7 +773,7 @@ def _build_task_payload(
     }
 
     if ai_enrich and config.enable_ai:
-        client = _ollama_client(config)
+        client = _ai_backend(config)
         if client and client.is_available():
             ai_payload = draft_task_with_ai(client, config.ollama_agent_model, board, title, summary)
             if ai_payload:

@@ -2,7 +2,7 @@
 
 Personal UX and AI — a local-first AI command centre where each workspace combines tasks, notes, repositories, documents, diagrams, app launchers, and AI agents.
 
-PUXAI is a practical local workspace built around a Flask web app, an Ollama-backed assistant, a kanban board, Markdown capture, Mermaid diagrams, and safe task-level actions. It is intended to feel more like an AI operating surface than a chat box with a few forms around it.
+PUXAI is a practical local workspace built around a Flask web app, a pluggable AI backend, a kanban board, Markdown capture, Mermaid diagrams, and safe task-level actions. It is intended to feel more like an AI operating surface than a chat box with a few forms around it.
 
 ## What PUXAI Is
 
@@ -13,7 +13,7 @@ PUXAI is currently a local-first product workspace with:
 - editable task workspaces
 - Markdown notes and todo capture
 - Mermaid diagrams attached to tasks and the board
-- Ollama-backed AI chat and task agents
+- AI-backed chat and task agents
 - repository context ingestion for grounded task work
 - safe local executor actions
 - cross-platform app launchers
@@ -52,9 +52,9 @@ The core idea is simple: keep context, planning, and action in one place, and le
 - Board-level Mermaid views for kanban and stitched board context
 - Preview support in the UI
 
-### Ollama-backed AI chat and agents
+### AI chat and agents
 
-- Board chat using Ollama
+- Board chat using the configured AI backend
 - AI task enrichment during task creation
 - Task agent runs that can suggest updates, checklist items, Mermaid artifacts, and next steps
 - Chat action layer for supported actions like creating tasks, notes, todos, drafts, and task updates
@@ -90,7 +90,7 @@ Requirements:
 
 - Python 3.10 or newer
 - `pip`
-- Ollama available locally or on your network
+- An available AI backend
 
 Optional but useful:
 
@@ -140,7 +140,7 @@ PUXAI reads its runtime configuration from `config.ini`.
 Important sections:
 
 - `[general]` app name, data directory, and default workspace
-- `[features]` high-level feature flags and `window_mode`
+- `[features]` high-level feature flags, `window_mode`, and `ai_backend`
 - `[web]` host, port, debug, and browser launch behavior
 - `[ollama]` Ollama URL, default model, agent model, and timeout
 - `[outlook]` Outlook-related settings currently stored in config, though this is not yet a full Outlook automation surface
@@ -150,6 +150,8 @@ Current examples from the repo:
 ```ini
 [features]
 enable_ai = true
+# Current backend options: ollama, dummy
+# Future planned options: openai, azure_openai, copilot
 ai_backend = ollama
 window_mode = web
 
@@ -164,6 +166,8 @@ model = llama3.2
 agent_model = llama3.2
 request_timeout_seconds = 360
 ```
+
+Today, `ai_backend = ollama` is the main live path. `ai_backend = dummy` can be used for testing without a running LLM. Future backend names such as `openai`, `azure_openai`, and `copilot` are reserved in the codebase but not implemented yet.
 
 The checked-in `config.ini` may point at a LAN-hosted Ollama instance. If you are running Ollama on the same machine, update the URL accordingly.
 
@@ -194,7 +198,7 @@ model = llama3.2
 agent_model = llama3.2
 ```
 
-If Ollama is offline or unreachable, the web app will still load, but AI chat and agent features will not function.
+If the configured AI backend is offline or unreachable, the web app will still load, but AI chat and agent features will not function.
 
 ## Current Limitations
 
@@ -226,7 +230,8 @@ Main entry points and useful files:
 - `main.py` — top-level launcher
 - `app/main.py` — runtime bootstrap
 - `app/web.py` — Flask routes and most application behavior
-- `app/services/agent_service.py` — Ollama prompts, chat planning, and task agent logic
+- `app/services/agent_service.py` — backend-agnostic prompts, chat planning, and task agent logic
+- `app/services/ai_backend.py` — AI backend interface, factory, and backend implementations
 - `app/services/executor_service.py` — safe local executor actions
 - `app/services/repo_context_service.py` — repository ingestion and document summaries
 - `app/services/board_store.py` — board persistence and normalization
@@ -241,4 +246,4 @@ Other notes:
 
 ## Honest Status
 
-PUXAI already supports a meaningful local workflow around tasks, notes, Mermaid, repo context, and Ollama-backed assistance. It is not yet a fully autonomous agent platform, and the README should be read with that in mind. Where something sounds more ambitious than the current code, it belongs in the roadmap rather than the feature list.
+PUXAI already supports a meaningful local workflow around tasks, notes, Mermaid, repo context, and backend-driven AI assistance. It is not yet a fully autonomous agent platform, and the README should be read with that in mind. Where something sounds more ambitious than the current code, it belongs in the roadmap rather than the feature list.

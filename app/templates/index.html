@@ -68,7 +68,7 @@
       </div>
       <div class="hero-metric">
         <span class="hero-metric-label">Models</span>
-        <strong>{{ ollama_status.models|length if ollama_status.available else 0 }}</strong>
+        <strong>{{ ai_status.models|length if ai_status.available else 0 }}</strong>
       </div>
     </div>
   </section>
@@ -428,7 +428,7 @@
           <div class="border-top p-3">
             <form id="chat-form">
               <textarea class="form-control mb-2" id="chat-message" rows="4" placeholder="Ask PUXAI what to build next or which executor action to run."></textarea>
-              <button class="btn btn-primary w-100" type="submit">Send to Ollama</button>
+              <button class="btn btn-primary w-100" type="submit">Send to AI backend</button>
             </form>
           </div>
         </div>
@@ -437,24 +437,25 @@
       <section class="glass-panel p-4 mb-4">
         <div class="section-heading">
           <div>
-            <div class="section-kicker">Ollama</div>
-            <h2>Model status</h2>
+            <div class="section-kicker">AI Backend</div>
+            <h2>Backend status</h2>
           </div>
         </div>
         <div class="status-stack">
+          <div class="status-row"><span>Backend</span><code>{{ ai_status.backend }}</code></div>
           <div class="status-row">
             <span>Server</span>
-            <strong class="{% if ollama_status.available %}text-success{% else %}text-danger{% endif %}">
-              {% if ollama_status.available %}Online{% else %}Offline{% endif %}
+            <strong class="{% if ai_status.available %}text-success{% else %}text-danger{% endif %}">
+              {% if ai_status.available %}Online{% else %}Offline{% endif %}
             </strong>
           </div>
-          <div class="status-row"><span>URL</span><code>{{ ollama_status.url }}</code></div>
-          <div class="status-row"><span>Default model</span><code>{{ ollama_status.default_model }}</code></div>
-          <div class="status-row"><span>Agent model</span><code>{{ ollama_status.agent_model }}</code></div>
+          <div class="status-row"><span>URL</span><code>{{ ai_status.url }}</code></div>
+          <div class="status-row"><span>Default model</span><code>{{ ai_status.default_model }}</code></div>
+          <div class="status-row"><span>Agent model</span><code>{{ ai_status.agent_model }}</code></div>
         </div>
-        {% if ollama_status.models %}
+        {% if ai_status.models %}
           <div class="tag-row mt-3">
-            {% for model in ollama_status.models %}
+            {% for model in ai_status.models %}
               <span class="tag-chip">{{ model }}</span>
             {% endfor %}
           </div>

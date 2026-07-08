@@ -25,10 +25,10 @@
             </span>
             <span class="nav-link disabled">{{ os_name }}</span>
             <span class="nav-link disabled">
-              {% if ollama_status.available %}
-                Ollama online
+              {% if ai_status.available %}
+                {{ ai_status.backend }} online
               {% else %}
-                Ollama offline
+                {{ ai_status.backend }} offline
               {% endif %}
             </span>
           </div>
