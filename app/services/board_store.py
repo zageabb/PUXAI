@@ -49,6 +49,12 @@ def default_repo_context() -> dict[str, Any]:
         "git_status": [],
         "recent_commits": [],
         "documents": [],
+        "detected_languages": [],
+        "detected_frameworks": [],
+        "important_files": [],
+        "folder_summary": [],
+        "dependency_files": [],
+        "last_scan_stats": {},
         "summary": "",
         "last_ingested_at": "",
     }
@@ -582,6 +588,16 @@ def _normalize_task(raw_task: dict[str, Any], valid_statuses: list[str]) -> dict
         "git_status": list(repo_context.get("git_status", [])),
         "recent_commits": list(repo_context.get("recent_commits", [])),
         "documents": list(repo_context.get("documents", [])),
+        "detected_languages": list(repo_context.get("detected_languages", [])),
+        "detected_frameworks": list(repo_context.get("detected_frameworks", [])),
+        "important_files": list(repo_context.get("important_files", [])),
+        "folder_summary": list(repo_context.get("folder_summary", [])),
+        "dependency_files": list(repo_context.get("dependency_files", [])),
+        "last_scan_stats": (
+            repo_context.get("last_scan_stats", {})
+            if isinstance(repo_context.get("last_scan_stats", {}), dict)
+            else {}
+        ),
         "summary": str(repo_context.get("summary", "")).strip(),
         "last_ingested_at": str(repo_context.get("last_ingested_at", "")).strip(),
     }

@@ -151,6 +151,90 @@
               <pre class="code-block compact-code">{{ task.repo_context.summary or "No repo context yet." }}</pre>
             </div>
           </div>
+          <div class="task-edit-grid-mini mt-4">
+            <div class="artifact-preview-card">
+              <div class="mini-label">Detected frameworks</div>
+              {% if task.repo_context.detected_frameworks %}
+                <div class="tag-row">
+                  {% for framework in task.repo_context.detected_frameworks %}
+                    <span class="tag-chip">{{ framework }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="small text-muted mb-0">No frameworks detected yet.</p>
+              {% endif %}
+              <div class="mini-label mt-3">Detected languages</div>
+              {% if task.repo_context.detected_languages %}
+                <div class="tag-row">
+                  {% for language in task.repo_context.detected_languages %}
+                    <span class="tag-chip">{{ language }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="small text-muted mb-0">No languages detected yet.</p>
+              {% endif %}
+            </div>
+            <div class="artifact-preview-card">
+              <div class="mini-label">Important files</div>
+              {% if task.repo_context.important_files %}
+                <div class="file-pill-grid">
+                  {% for path in task.repo_context.important_files[:10] %}
+                    <span class="file-pill">{{ path }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="small text-muted mb-0">No important files identified yet.</p>
+              {% endif %}
+              <div class="mini-label mt-3">Dependency files</div>
+              {% if task.repo_context.dependency_files %}
+                <div class="file-pill-grid">
+                  {% for path in task.repo_context.dependency_files[:8] %}
+                    <span class="file-pill">{{ path }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="small text-muted mb-0">No dependency files identified yet.</p>
+              {% endif %}
+            </div>
+          </div>
+          <div class="task-edit-grid-mini mt-4">
+            <div class="artifact-preview-card">
+              <div class="mini-label">Folder summary</div>
+              {% if task.repo_context.folder_summary %}
+                <div class="run-list">
+                  {% for folder in task.repo_context.folder_summary[:8] %}
+                    <article class="run-card">
+                      <div class="run-summary">{{ folder.folder }}</div>
+                      <div class="small text-muted">{{ folder.file_count }} files</div>
+                    </article>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="small text-muted mb-0">No folder summary available yet.</p>
+              {% endif %}
+            </div>
+            <div class="artifact-preview-card">
+              <div class="mini-label">Selected files</div>
+              {% if task.repo_context.selected_files %}
+                <div class="file-pill-grid">
+                  {% for path in task.repo_context.selected_files[:12] %}
+                    <span class="file-pill">{{ path }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="small text-muted mb-0">No selected files yet.</p>
+              {% endif %}
+              {% if task.repo_context.last_scan_stats %}
+                <div class="mini-label mt-3">Last scan stats</div>
+                <div class="small text-muted">
+                  Indexed {{ task.repo_context.last_scan_stats.total_files or 0 }} files,
+                  matched {{ task.repo_context.last_scan_stats.matched_files or 0 }},
+                  selected {{ task.repo_context.last_scan_stats.selected_files or 0 }},
+                  read {{ task.repo_context.last_scan_stats.documents_read or 0 }} documents.
+                </div>
+              {% endif %}
+            </div>
+          </div>
         </section>
 
         <section class="glass-panel p-4">

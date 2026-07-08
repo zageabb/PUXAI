@@ -198,6 +198,26 @@
                                 </div>
                               </div>
                             {% endif %}
+                            {% if task.repo_context.detected_frameworks %}
+                              <div class="context-block">
+                                <div class="mini-label">Frameworks</div>
+                                <div class="tag-row">
+                                  {% for framework in task.repo_context.detected_frameworks[:4] %}
+                                    <span class="tag-chip">{{ framework }}</span>
+                                  {% endfor %}
+                                </div>
+                              </div>
+                            {% endif %}
+                            {% if task.repo_context.important_files %}
+                              <div class="context-block">
+                                <div class="mini-label">Important files</div>
+                                <div class="file-pill-grid">
+                                  {% for file in task.repo_context.important_files[:4] %}
+                                    <span class="file-pill">{{ file }}</span>
+                                  {% endfor %}
+                                </div>
+                              </div>
+                            {% endif %}
                             {% if task.repo_context.documents %}
                               <div class="context-block">
                                 <div class="mini-label">Documents</div>
