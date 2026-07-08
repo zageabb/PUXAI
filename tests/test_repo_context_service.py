@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import zipfile
 
 import pytest
 
@@ -30,7 +31,25 @@ def test_read_document_summary_reads_text_file(tmp_path: Path) -> None:
 
     assert result["kind"] == "md"
     assert "Heading" in result["headings"][0]
-    assert "Some useful details" in result["summary"]
+    assert "Markdown attachment" in result["summary"]
+
+
+def test_read_document_summary_reads_docx_file(tmp_path: Path) -> None:
+    path = tmp_path / "notes.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                "<w:body><w:p><w:r><w:t>Docx heading</w:t></w:r></w:p></w:body></w:document>"
+            ),
+        )
+
+    result = read_document_summary(path)
+
+    assert result["kind"] == "docx"
+    assert "Word document" in result["summary"]
 
 
 def test_ingest_repository_context_rejects_missing_or_non_directory_paths(tmp_path: Path) -> None:

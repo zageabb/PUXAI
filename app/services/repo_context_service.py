@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
+from app.services.attachment_service import parse_attachment_content
 from app.services.board_store import utc_now
 
 
@@ -314,15 +315,8 @@ def recent_commit_lines(path: Path) -> list[str]:
 
 def read_document_summary(path: Path) -> dict[str, Any]:
     extension = path.suffix.lower()
-    if extension not in TEXT_EXTENSIONS:
-        return {
-            "path": str(path),
-            "kind": extension.lstrip(".") or "file",
-            "summary": "Binary or unsupported text file for quick parsing.",
-            "headings": [],
-        }
     try:
-        raw = path.read_text(encoding="utf-8", errors="ignore")
+        parsed = parse_attachment_content(path)
     except OSError as exc:
         return {
             "path": str(path),
@@ -330,14 +324,11 @@ def read_document_summary(path: Path) -> dict[str, Any]:
             "summary": f"Could not read file: {exc}",
             "headings": [],
         }
-    lines = [line.strip() for line in raw.splitlines() if line.strip()]
-    headings = [line for line in lines if line.startswith("#") or line.endswith(":")][:6]
-    summary = " ".join(lines[:10])[:500]
     return {
         "path": str(path),
         "kind": extension.lstrip(".") or "file",
-        "summary": summary,
-        "headings": headings,
+        "summary": parsed.get("summary", ""),
+        "headings": list(parsed.get("headings", []))[:6],
     }
 
 
