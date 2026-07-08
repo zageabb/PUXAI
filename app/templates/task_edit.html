@@ -137,9 +137,41 @@
             <div class="artifact-preview-card">
               <div class="mini-label">Attachments</div>
               {% if task.attachments %}
-                <div class="file-pill-grid">
+                <div class="run-list">
                   {% for attachment in task.attachments %}
-                    <a class="file-pill" href="{{ url_for('task_file_download', task_id=task.id, filename=attachment.filename) }}">{{ attachment.filename }}</a>
+                    <article class="run-card">
+                      <div class="capture-card-head mb-0">
+                        <div>
+                          <a class="run-summary text-decoration-none" href="{{ url_for('task_file_download', task_id=task.id, filename=attachment.filename) }}">{{ attachment.filename }}</a>
+                          <div class="small text-muted">
+                            {{ attachment.kind or "file" }}
+                            {% if attachment.extension %}• {{ attachment.extension }}{% endif %}
+                            {% if attachment.size_bytes %}• {{ attachment.size_bytes }} bytes{% endif %}
+                          </div>
+                        </div>
+                        <div class="small text-muted text-end">
+                          {{ attachment.uploaded_at[:19].replace('T', ' ') if attachment.uploaded_at else "" }}
+                        </div>
+                      </div>
+                      {% if attachment.summary %}
+                        <div class="small text-muted mt-2">{{ attachment.summary }}</div>
+                      {% endif %}
+                      {% if attachment.headings %}
+                        <div class="mini-label mt-3">Headings</div>
+                        <div class="file-pill-grid">
+                          {% for heading in attachment.headings[:8] %}
+                            <span class="file-pill">{{ heading }}</span>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                      {% if attachment.preview %}
+                        <div class="mini-label mt-3">Preview</div>
+                        <pre class="code-block compact-code">{{ attachment.preview }}</pre>
+                      {% endif %}
+                      {% if attachment.error %}
+                        <div class="small text-warning mt-2">{{ attachment.error }}</div>
+                      {% endif %}
+                    </article>
                   {% endfor %}
                 </div>
               {% else %}

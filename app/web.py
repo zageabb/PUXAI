@@ -24,6 +24,7 @@ from app.services.agent_service import (
     run_task_agent,
 )
 from app.services.ai_backend import create_ai_backend
+from app.services.attachment_service import summarise_attachment
 from app.services.board_store import (
     BoardStore,
     default_mermaid_artifacts,
@@ -602,13 +603,13 @@ def create_app(
         task_dir.mkdir(parents=True, exist_ok=True)
         destination = task_dir / filename
         uploaded.save(destination)
+        attachment_summary = summarise_attachment(destination)
         attachments = list(task.get("attachments", []))
         attachments.append(
             {
-                "filename": filename,
                 "stored_path": str(destination),
-                "size_bytes": destination.stat().st_size,
                 "uploaded_at": utc_now(),
+                **attachment_summary,
             }
         )
         _board_store(app).update_task(task_id, {"attachments": attachments})
@@ -619,7 +620,7 @@ def create_app(
             kind="task.file_attached",
             title="File attached",
             summary=f"Attached file '{filename}' to '{task['title']}'.",
-            payload={"filename": filename, "size_bytes": destination.stat().st_size},
+            payload={"filename": filename, "size_bytes": attachment_summary.get("size_bytes", 0)},
         )
         flash(f"Attached {filename}.", "success")
         return redirect(url_for("edit_task", task_id=task_id))
