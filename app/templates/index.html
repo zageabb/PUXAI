@@ -387,18 +387,19 @@
         <section class="glass-panel p-4">
           <div class="section-heading">
             <div>
-              <div class="section-kicker">Recent Agent Runs</div>
-              <h2>Execution trace</h2>
+              <div class="section-kicker">Recent Activity</div>
+              <h2>Board timeline</h2>
             </div>
           </div>
           <div class="run-list">
-            {% for run in board.agent_runs[:10] %}
+            {% for event in recent_activity %}
               <article class="run-card">
-                <div class="run-meta">{{ run.kind }} • {{ run.created_at[:19].replace('T', ' ') }}</div>
-                <div class="run-summary">{{ run.summary }}</div>
+                <div class="run-meta">{{ event.kind }} • {{ event.created_at[:19].replace('T', ' ') }}</div>
+                <div class="run-summary">{{ event.title }}</div>
+                <div class="small text-muted">{{ event.summary }}</div>
               </article>
             {% else %}
-              <div class="empty-column-card">No agent runs yet. Trigger one from a task card.</div>
+              <div class="empty-column-card">No activity yet. Start creating and updating work to build the timeline.</div>
             {% endfor %}
           </div>
         </section>

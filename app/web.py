@@ -94,6 +94,7 @@ def create_app(
             "index.html",
             board=board,
             tasks_by_status=_tasks_by_status(board),
+            recent_activity=store.list_recent_activity(25),
             os_name=os_name,
         )
 
@@ -180,6 +181,7 @@ def create_app(
             board=board,
             task=task,
             checklist_text=_checklist_to_text(task.get("checklist", [])),
+            task_activity=_board_store(app).list_task_activity(task_id, 50),
         )
 
     @app.post("/tasks")
@@ -208,6 +210,15 @@ def create_app(
             config=config,
         )
         _board_store(app).add_task(task)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task["id"],
+            kind="task.created",
+            title="Task created",
+            summary=f"Created task '{task['title']}' in {task['status']}.",
+            payload={"status": task["status"], "priority": task["priority"]},
+        )
         _refresh_mermaid(app)
         flash(f"Added task '{title}'.", "success")
         return redirect(url_for("index"))
@@ -229,6 +240,14 @@ def create_app(
             }
         )
         _board_store(app).add_note(note)
+        _append_activity_event(
+            app,
+            scope="board",
+            kind="note.created",
+            title="Note created",
+            summary=f"Saved note '{title}'.",
+            payload={"note_id": note["id"]},
+        )
         flash(f"Saved note '{title}'.", "success")
         return redirect(url_for("index"))
 
@@ -247,6 +266,14 @@ def create_app(
             }
         )
         _board_store(app).add_todo_item(todo_item)
+        _append_activity_event(
+            app,
+            scope="board",
+            kind="todo.created",
+            title="Todo created",
+            summary=f"Added todo '{text}'.",
+            payload={"todo_id": todo_item["id"]},
+        )
         flash("Added todo item.", "success")
         return redirect(url_for("index"))
 
@@ -295,6 +322,15 @@ def create_app(
             config=config,
         )
         _board_store(app).add_task(task)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task["id"],
+            kind="task.created_from_capture",
+            title="Task created from capture",
+            summary=f"Created task '{task['title']}' from {source_type}.",
+            payload={"source_type": source_type, "source_id": source_id},
+        )
         _refresh_mermaid(app)
         flash(f"Created task '{task['title']}' from {source_type}.", "success")
         return redirect(url_for("edit_task", task_id=task["id"]))
@@ -306,7 +342,18 @@ def create_app(
         if status not in board["statuses"]:
             flash("Unknown status.", "warning")
             return redirect(url_for("index"))
+        task = _find_task(board, task_id)
         _move_task_to_status(app, task_id, status)
+        if task is not None:
+            _append_activity_event(
+                app,
+                scope="task",
+                task_id=task_id,
+                kind="task.moved",
+                title="Task moved",
+                summary=f"Moved task '{task['title']}' to {status}.",
+                payload={"status": status},
+            )
         return redirect(url_for("index"))
 
     @app.post("/api/tasks/<task_id>/move")
@@ -316,7 +363,18 @@ def create_app(
         status = str(payload.get("status", "")).strip()
         if status not in board["statuses"]:
             return jsonify({"ok": False, "message": "Unknown status."}), 400
+        task = _find_task(board, task_id)
         _move_task_to_status(app, task_id, status)
+        if task is not None:
+            _append_activity_event(
+                app,
+                scope="task",
+                task_id=task_id,
+                kind="task.moved",
+                title="Task moved",
+                summary=f"Moved task '{task['title']}' to {status}.",
+                payload={"status": status},
+            )
         return jsonify({"ok": True, "status": status})
 
     @app.post("/tasks/<task_id>/artifacts")
@@ -366,6 +424,15 @@ def create_app(
         if patch["status"] not in board["statuses"]:
             patch["status"] = task["status"]
         _board_store(app).update_task(task_id, patch)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.edited",
+            title="Task edited",
+            summary=f"Saved task workspace for '{patch['title']}'.",
+            payload={"status": patch["status"], "priority": patch["priority"]},
+        )
         _refresh_mermaid(app)
         flash(f"Saved task workspace for '{patch['title']}'.", "success")
         return redirect(url_for("edit_task", task_id=task_id))
@@ -382,6 +449,15 @@ def create_app(
         if task_files_dir.exists():
             shutil.rmtree(task_files_dir, ignore_errors=True)
 
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.deleted",
+            title="Task deleted",
+            summary=f"Deleted task '{task['title']}'.",
+            payload={"title": task["title"]},
+        )
         _board_store(app).delete_task(task_id)
         _refresh_mermaid(app)
         flash(f"Deleted task '{task['title']}'.", "success")
@@ -407,6 +483,15 @@ def create_app(
             flash(f"Repo context ingestion failed: {exc}", "danger")
             return redirect(url_for("index"))
         _board_store(app).update_task(task_id, {"repo_context": context})
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.repo_context_ingested",
+            title="Repository context ingested",
+            summary=f"Ingested repo context for '{task['title']}'.",
+            payload={"repo_path": context.get("repo_path", "")},
+        )
         _refresh_mermaid(app)
         flash(f"Ingested repo context for '{task['title']}'.", "success")
         return redirect(request.form.get("next") or url_for("index"))
@@ -440,6 +525,15 @@ def create_app(
             }
         )
         _board_store(app).update_task(task_id, {"attachments": attachments})
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.file_attached",
+            title="File attached",
+            summary=f"Attached file '{filename}' to '{task['title']}'.",
+            payload={"filename": filename, "size_bytes": destination.stat().st_size},
+        )
         flash(f"Attached {filename}.", "success")
         return redirect(url_for("edit_task", task_id=task_id))
 
@@ -461,6 +555,15 @@ def create_app(
         drafts = list(task.get("email_drafts", []))
         drafts.insert(0, draft)
         _board_store(app).update_task(task_id, {"email_drafts": drafts[:10]})
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.email_draft_created",
+            title="Email draft created",
+            summary=f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'.",
+            payload={"draft_type": _normalize_draft_type(draft_type), "recipient": recipient},
+        )
         flash(f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'.", "success")
         return redirect(url_for("edit_task", task_id=task_id))
 
@@ -499,6 +602,15 @@ def create_app(
         run = record_executor_run(task_id, action, result.get("summary", action), result)
         _board_store(app).append_task_run(task_id, run)
         _board_store(app).append_agent_run(run)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.executor_completed",
+            title="Executor action completed",
+            summary=result.get("summary", f"Executed {action}."),
+            payload={"action": action},
+        )
         _refresh_mermaid(app)
         flash(result.get("summary", f"Executed {action}."), "success")
         return redirect(request.form.get("next") or url_for("index"))
@@ -553,6 +665,15 @@ def create_app(
         )
         run = record_agent_run(task_id, "task-agent", payload.get("summary", task["title"]), payload)
         _board_store(app).append_agent_run(run)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.agent_completed",
+            title="Agent run completed",
+            summary=payload.get("summary", f"Agent run completed for '{task['title']}'."),
+            payload={"status_suggestion": suggested_status, "executor_action": executor_action},
+        )
         _refresh_mermaid(app)
         flash(f"Agent run completed for '{task['title']}'.", "success")
         return redirect(request.form.get("next") or url_for("index"))
@@ -568,6 +689,16 @@ def create_app(
         checklist = list(task["checklist"])
         checklist[item_index]["done"] = not checklist[item_index].get("done", False)
         _board_store(app).update_task(task_id, {"checklist": checklist})
+        item = checklist[item_index]
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.checklist_toggled",
+            title="Checklist updated",
+            summary=f"{'Completed' if item.get('done') else 'Reopened'} checklist item '{item.get('text', '')}'.",
+            payload={"item_index": item_index, "done": item.get("done", False)},
+        )
         return redirect(url_for("index"))
 
     @app.post("/launch/<app_id>")
@@ -592,6 +723,13 @@ def create_app(
         board["board_summary"] = summary or board["board_summary"]
         board["ideas"] = [line.strip() for line in ideas_text.splitlines() if line.strip()]
         _board_store(app).save(board)
+        _append_activity_event(
+            app,
+            scope="board",
+            kind="board.summary_updated",
+            title="Board narrative updated",
+            summary="Saved board summary and ideas.",
+        )
         _refresh_mermaid(app)
         flash("Board narrative updated.", "success")
         return redirect(url_for("index"))
@@ -599,6 +737,13 @@ def create_app(
     @app.post("/board/refresh-mermaid")
     def refresh_mermaid() -> Any:
         _refresh_mermaid(app)
+        _append_activity_event(
+            app,
+            scope="board",
+            kind="board.mermaid_refreshed",
+            title="Mermaid refreshed",
+            summary="Refreshed board Mermaid views.",
+        )
         flash("Board Mermaid views refreshed.", "success")
         return redirect(url_for("index"))
 
@@ -905,6 +1050,30 @@ def _task_files_dir(app: Flask, task_id: str) -> Path:
     return _board_store(app).current_workspace_root() / "task_files" / task_id
 
 
+def _append_activity_event(
+    app: Flask,
+    *,
+    scope: str,
+    kind: str,
+    title: str,
+    summary: str,
+    task_id: str = "",
+    payload: dict[str, Any] | None = None,
+) -> None:
+    _board_store(app).append_activity_event(
+        {
+            "id": new_id(),
+            "scope": scope,
+            "task_id": task_id,
+            "kind": kind,
+            "title": title,
+            "summary": summary,
+            "payload": payload or {},
+            "created_at": utc_now(),
+        }
+    )
+
+
 def _checklist_to_text(items: list[dict[str, Any]]) -> str:
     lines = []
     for item in items:
@@ -1171,6 +1340,14 @@ def _execute_chat_action(
         note = default_note()
         note.update({"title": title, "body": body, "updated_at": utc_now()})
         _board_store(app).add_note(note)
+        _append_activity_event(
+            app,
+            scope="board",
+            kind="note.created",
+            title="Note created",
+            summary=f"Saved note '{title}'.",
+            payload={"note_id": note["id"]},
+        )
         return {"summary": f"Created note '{title}'.", "note_id": note["id"]}
 
     if name == "create_todo":
@@ -1180,6 +1357,14 @@ def _execute_chat_action(
         todo_item = default_todo_item()
         todo_item.update({"text": text, "updated_at": utc_now()})
         _board_store(app).add_todo_item(todo_item)
+        _append_activity_event(
+            app,
+            scope="board",
+            kind="todo.created",
+            title="Todo created",
+            summary=f"Added todo '{text}'.",
+            payload={"todo_id": todo_item["id"]},
+        )
         return {"summary": f"Added todo '{text}'.", "todo_id": todo_item["id"]}
 
     if name == "create_task":
@@ -1198,6 +1383,15 @@ def _execute_chat_action(
             config=config,
         )
         _board_store(app).add_task(task)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task["id"],
+            kind="task.created",
+            title="Task created",
+            summary=f"Created task '{task['title']}' in {task['status']}.",
+            payload={"status": task["status"], "priority": task["priority"]},
+        )
         _refresh_mermaid(app)
         return {"summary": f"Created task '{task['title']}'.", "task_id": task["id"]}
 
@@ -1217,6 +1411,15 @@ def _execute_chat_action(
             config=config,
         )
         _board_store(app).add_task(task)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task["id"],
+            kind="task.created_from_capture",
+            title="Task created from note",
+            summary=f"Created task '{task['title']}' from note.",
+            payload={"source_type": "note", "source_id": note["id"]},
+        )
         _refresh_mermaid(app)
         return {
             "summary": f"Created task '{task['title']}' from note.",
@@ -1239,6 +1442,15 @@ def _execute_chat_action(
             config=config,
         )
         _board_store(app).add_task(task)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task["id"],
+            kind="task.created_from_capture",
+            title="Task created from todo",
+            summary=f"Created task '{task['title']}' from todo.",
+            payload={"source_type": "todo", "source_id": todo_item["id"]},
+        )
         _refresh_mermaid(app)
         return {
             "summary": f"Created task '{task['title']}' from todo.",
@@ -1255,6 +1467,15 @@ def _execute_chat_action(
         drafts = list(task.get("email_drafts", []))
         drafts.insert(0, draft)
         _board_store(app).update_task(task["id"], {"email_drafts": drafts[:10]})
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task["id"],
+            kind="task.email_draft_created",
+            title="Email draft created",
+            summary=f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'.",
+            payload={"draft_type": _normalize_draft_type(draft_type), "recipient": recipient},
+        )
         return {
             "summary": (
                 f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'. "
@@ -1282,6 +1503,15 @@ def _execute_chat_action(
             patch["labels"] = [str(label).strip() for label in args.get("labels", []) if str(label).strip()]
         if patch:
             _board_store(app).update_task(task_id, patch)
+            _append_activity_event(
+                app,
+                scope="task",
+                task_id=task_id,
+                kind="task.edited",
+                title="Task edited",
+                summary=f"Updated task '{task['title']}'.",
+                payload=patch,
+            )
             _refresh_mermaid(app)
         return {"summary": f"Updated task '{task['title']}'.", "task_id": task_id}
 
@@ -1294,6 +1524,15 @@ def _execute_chat_action(
             raise ValueError("Status not found.")
         task_id = task["id"]
         _move_task_to_status(app, task_id, status)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.moved",
+            title="Task moved",
+            summary=f"Moved task '{task['title']}' to {status}.",
+            payload={"status": status},
+        )
         return {"summary": f"Moved task '{task['title']}' to {status}.", "task_id": task_id}
 
     if name == "run_executor":
@@ -1309,6 +1548,15 @@ def _execute_chat_action(
         run = record_executor_run(task_id, action, result.get("summary", action), result)
         _board_store(app).append_task_run(task_id, run)
         _board_store(app).append_agent_run(run)
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.executor_completed",
+            title="Executor action completed",
+            summary=result.get("summary", f"Executed {action}."),
+            payload={"action": action},
+        )
         _refresh_mermaid(app)
         return {"summary": result.get("summary", f"Executed {action}."), "task_id": task_id}
 

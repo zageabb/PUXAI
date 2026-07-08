@@ -100,6 +100,19 @@ def default_todo_item() -> dict[str, Any]:
     }
 
 
+def default_activity_event() -> dict[str, Any]:
+    return {
+        "id": new_id(),
+        "scope": "board",
+        "task_id": "",
+        "kind": "",
+        "title": "",
+        "summary": "",
+        "payload": {},
+        "created_at": utc_now(),
+    }
+
+
 def default_board() -> dict[str, Any]:
     cross_platform = default_task()
     cross_platform.update(
@@ -142,6 +155,7 @@ def default_board() -> dict[str, Any]:
         "notes": [],
         "todo_items": [],
         "agent_runs": [],
+        "activity": [],
         "chat_history": [],
         "board_mermaid_artifacts": {
             "kanban": "",
@@ -280,6 +294,25 @@ class BoardStore:
         board["chat_history"] = board["chat_history"][-20:]
         return self.save(board)
 
+    def append_activity_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        board = self.load()
+        normalized_event = _normalize_activity_event(event)
+        board.setdefault("activity", []).insert(0, normalized_event)
+        board["activity"] = board["activity"][:200]
+        return self.save(board)
+
+    def list_recent_activity(self, limit: int = 200) -> list[dict[str, Any]]:
+        board = self.load()
+        return list(board.get("activity", []))[: max(0, limit)]
+
+    def list_task_activity(self, task_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        board = self.load()
+        task_events = [
+            event for event in board.get("activity", [])
+            if str(event.get("task_id", "")).strip() == task_id
+        ]
+        return task_events[: max(0, limit)]
+
     def list_workspaces(self) -> list[dict[str, str]]:
         workspaces: list[dict[str, str]] = []
         for workspace_dir in sorted(self.workspaces_dir.iterdir(), key=lambda item: item.name):
@@ -376,6 +409,10 @@ class BoardStore:
             for raw_todo_item in board.get("todo_items", [])
         ]
         board["agent_runs"] = list(board.get("agent_runs", []))
+        board["activity"] = [
+            _normalize_activity_event(raw_event)
+            for raw_event in board.get("activity", [])
+        ][:200]
         board["chat_history"] = list(board.get("chat_history", []))
         board["ideas"] = list(board.get("ideas", []))
         board["board_mermaid_artifacts"] = {
@@ -570,4 +607,18 @@ def _normalize_todo_item(raw_todo_item: dict[str, Any]) -> dict[str, Any]:
         "done": bool(raw_todo_item.get("done", False)),
         "created_at": raw_todo_item.get("created_at", base["created_at"]),
         "updated_at": raw_todo_item.get("updated_at", base["updated_at"]),
+    }
+
+
+def _normalize_activity_event(raw_event: dict[str, Any]) -> dict[str, Any]:
+    base = default_activity_event()
+    return {
+        "id": str(raw_event.get("id", base["id"])).strip() or base["id"],
+        "scope": str(raw_event.get("scope", "board")).strip() or "board",
+        "task_id": str(raw_event.get("task_id", "")).strip(),
+        "kind": str(raw_event.get("kind", "")).strip(),
+        "title": str(raw_event.get("title", "")).strip(),
+        "summary": str(raw_event.get("summary", "")).strip(),
+        "payload": raw_event.get("payload", {}) if isinstance(raw_event.get("payload", {}), dict) else {},
+        "created_at": str(raw_event.get("created_at", base["created_at"])).strip() or base["created_at"],
     }

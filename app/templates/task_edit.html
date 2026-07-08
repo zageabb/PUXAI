@@ -171,6 +171,26 @@
             {% endfor %}
           </div>
         </section>
+
+        <section class="glass-panel p-4 mt-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Task Timeline</div>
+              <h2>Activity log</h2>
+            </div>
+          </div>
+          <div class="run-list">
+            {% for event in task_activity %}
+              <article class="run-card">
+                <div class="run-meta">{{ event.kind }} • {{ event.created_at[:19].replace('T', ' ') }}</div>
+                <div class="run-summary">{{ event.title }}</div>
+                <div class="small text-muted">{{ event.summary }}</div>
+              </article>
+            {% else %}
+              <div class="empty-column-card">No activity has been recorded for this task yet.</div>
+            {% endfor %}
+          </div>
+        </section>
       </main>
 
       <aside class="task-edit-side">
