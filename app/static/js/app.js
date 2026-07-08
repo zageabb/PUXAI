@@ -416,3 +416,27 @@ if (
     }
   });
 }
+
+document.querySelectorAll("[data-copy-text]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const text = button.dataset.copyText || "";
+    const label = button.dataset.copyLabel || "Copy";
+    const statusUrl = button.dataset.copyStatusUrl || "";
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = "Copied";
+      if (statusUrl) {
+        await fetch(statusUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "copied" }),
+        });
+      }
+      window.setTimeout(() => {
+        button.textContent = label;
+      }, 1200);
+    } catch (error) {
+      window.alert(`Copy failed: ${error}`);
+    }
+  });
+});

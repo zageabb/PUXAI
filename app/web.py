@@ -207,6 +207,7 @@ def create_app(
             task_activity=_board_store(app).list_task_activity(task_id, 50),
             executor_action_details=_task_executor_action_details(task),
             mermaid_artifact_details=_task_mermaid_artifact_details(task),
+            email_draft_details=_task_email_draft_details(task),
         )
 
     @app.post("/tasks")
@@ -654,6 +655,75 @@ def create_app(
         )
         flash(f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'.", "success")
         return redirect(url_for("edit_task", task_id=task_id))
+
+    @app.post("/tasks/<task_id>/email-drafts/<draft_id>/edit")
+    def update_email_draft(task_id: str, draft_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            flash("Task not found.", "warning")
+            return redirect(url_for("index"))
+        drafts = _normalized_email_drafts(task)
+        draft = next((item for item in drafts if item["id"] == draft_id), None)
+        if draft is None:
+            flash("Email draft not found.", "warning")
+            return redirect(url_for("edit_task", task_id=task_id))
+
+        draft["recipient"] = request.form.get("recipient", draft.get("recipient", "")).strip()
+        draft["subject"] = request.form.get("subject", draft.get("subject", "")).strip() or draft.get("subject", "")
+        draft["body"] = request.form.get("body", draft.get("body", "")).strip()
+        draft["status"] = _normalize_email_draft_status(request.form.get("status", draft.get("status", "draft")))
+        draft["updated_at"] = utc_now()
+        _board_store(app).update_task(task_id, {"email_drafts": drafts[:10]})
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.email_draft_updated",
+            title="Email draft updated",
+            summary=f"Updated {_draft_type_label(draft['type'])} draft for '{task['title']}'.",
+            payload={"draft_id": draft_id, "status": draft["status"]},
+        )
+        flash("Email draft updated.", "success")
+        return redirect(url_for("edit_task", task_id=task_id))
+
+    @app.post("/api/tasks/<task_id>/email-drafts/<draft_id>/status")
+    def update_email_draft_status(task_id: str, draft_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            return jsonify({"ok": False, "message": "Task not found."}), 404
+        drafts = _normalized_email_drafts(task)
+        draft = next((item for item in drafts if item["id"] == draft_id), None)
+        if draft is None:
+            return jsonify({"ok": False, "message": "Email draft not found."}), 404
+        payload = request.get_json(force=True)
+        draft["status"] = _normalize_email_draft_status(payload.get("status", draft.get("status", "draft")))
+        draft["updated_at"] = utc_now()
+        _board_store(app).update_task(task_id, {"email_drafts": drafts[:10]})
+        return jsonify({"ok": True, "status": draft["status"], "updated_at": draft["updated_at"]})
+
+    @app.get("/tasks/<task_id>/email-drafts/<draft_id>/download")
+    def download_email_draft(task_id: str, draft_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            abort(404)
+        drafts = _normalized_email_drafts(task)
+        draft = next((item for item in drafts if item["id"] == draft_id), None)
+        if draft is None:
+            abort(404)
+        export_format = str(request.args.get("format", "txt")).strip().lower()
+        content, mimetype, extension = _email_draft_download_payload(draft, export_format)
+        draft["status"] = "exported"
+        draft["updated_at"] = utc_now()
+        _board_store(app).update_task(task_id, {"email_drafts": drafts[:10]})
+        return send_file(
+            BytesIO(content.encode("utf-8")),
+            as_attachment=True,
+            download_name=f"{secure_filename(task['title']) or 'task'}-{draft['type']}.{extension}",
+            mimetype=mimetype,
+        )
 
     @app.get("/tasks/<task_id>/work-brief-download")
     def download_work_brief(task_id: str) -> Any:
@@ -1482,6 +1552,33 @@ def _task_mermaid_artifact_details(task: dict[str, Any]) -> list[dict[str, Any]]
     return details
 
 
+def _task_email_draft_details(task: dict[str, Any]) -> list[dict[str, Any]]:
+    return _normalized_email_drafts(task)[:10]
+
+
+def _normalized_email_drafts(task: dict[str, Any]) -> list[dict[str, Any]]:
+    drafts: list[dict[str, Any]] = []
+    for raw_draft in task.get("email_drafts", []):
+        draft_id = str(raw_draft.get("id", "")).strip() or new_id()
+        created_at = str(raw_draft.get("created_at", utc_now())).strip() or utc_now()
+        updated_at = str(raw_draft.get("updated_at", created_at)).strip() or created_at
+        draft_type = _normalize_draft_type(raw_draft.get("type", "work_brief"))
+        drafts.append(
+            {
+                "id": draft_id,
+                "type": draft_type,
+                "type_label": _draft_type_label(draft_type),
+                "recipient": str(raw_draft.get("recipient", "")).strip(),
+                "subject": str(raw_draft.get("subject", _draft_subject(task, draft_type))).strip() or _draft_subject(task, draft_type),
+                "body": str(raw_draft.get("body", _draft_body(task, draft_type))).strip(),
+                "status": _normalize_email_draft_status(raw_draft.get("status", "draft")),
+                "created_at": created_at,
+                "updated_at": updated_at,
+            }
+        )
+    return drafts
+
+
 def _normalize_task_mermaid_artifact_name(value: str) -> str | None:
     normalized = str(value or "").strip().lower()
     valid_names = set(default_mermaid_artifacts().keys())
@@ -1606,48 +1703,100 @@ def _draft_subject(task: dict[str, Any], draft_type: str) -> str:
     normalized = _normalize_draft_type(draft_type)
     if normalized == "work_brief":
         return f"Work Brief: {task['title']}"
-    if draft_type == "status":
+    if normalized == "status_update":
         return f"Status update: {task['title']}"
+    if normalized == "supplier_rfq":
+        return f"Supplier RFQ: {task['title']}"
+    if normalized == "internal_action_request":
+        return f"Internal action request: {task['title']}"
+    if normalized == "meeting_follow_up":
+        return f"Meeting follow-up: {task['title']}"
     return f"PUXAI task: {task['title']}"
 
 
 def _draft_body(task: dict[str, Any], draft_type: str) -> str:
     normalized = _normalize_draft_type(draft_type)
     selected_files = task.get("repo_context", {}).get("selected_files", [])[:5]
+    attachments = task.get("attachments", [])[:5]
     file_list = "\n".join(f"- {path}" for path in selected_files) or "- No files linked yet"
+    attachment_list = "\n".join(f"- {item.get('filename', 'attachment')}" for item in attachments) or "- No attachments yet"
     checklist_text = "\n".join(
         f"- {item['text']}" for item in task.get("checklist", []) if item.get("text")
     ) or "- No checklist items yet"
-    if normalized == "status":
+    notes_text = task.get("notes", "") or "No notes yet."
+    if normalized == "status_update":
         return (
-            f"Task: {task['title']}\n\n"
+            f"Hello,\n\n"
+            f"Here is the latest status update for {task['title']}.\n\n"
             f"Summary:\n{task.get('summary', '')}\n\n"
-            f"Status: {task.get('status', '')}\n"
-            f"Priority: {task.get('priority', '')}\n\n"
-            f"Checklist:\n{checklist_text}\n\n"
-            f"Notes:\n{task.get('notes', '')}"
+            f"Current state:\n"
+            f"- Status: {task.get('status', '')}\n"
+            f"- Priority: {task.get('priority', '')}\n"
+            f"- Owner: {task.get('owner', '')}\n\n"
+            f"Open actions:\n{checklist_text}\n\n"
+            f"Notes:\n{notes_text}\n\n"
+            "Please let me know if you would like a deeper breakdown."
+        )
+    if normalized == "supplier_rfq":
+        return (
+            "Hello,\n\n"
+            "Please provide pricing, lead time, and any technical clarifications for the following request.\n\n"
+            f"Request: {task['title']}\n"
+            f"Scope summary: {task.get('summary', '')}\n\n"
+            f"Requested supplier response:\n{checklist_text}\n\n"
+            f"Linked files:\n{file_list}\n\n"
+            f"Attachments:\n{attachment_list}\n\n"
+            f"Additional notes:\n{notes_text}\n\n"
+            "Please reply with any assumptions, exclusions, and delivery considerations.\n\n"
+            "Thanks."
+        )
+    if normalized == "internal_action_request":
+        return (
+            "Hello,\n\n"
+            "I need support on the following internal action.\n\n"
+            f"Task: {task['title']}\n"
+            f"Summary: {task.get('summary', '')}\n\n"
+            f"Requested actions:\n{checklist_text}\n\n"
+            f"Relevant repo files:\n{file_list}\n\n"
+            f"Context notes:\n{notes_text}\n\n"
+            "Please confirm ownership and next steps."
+        )
+    if normalized == "meeting_follow_up":
+        return (
+            "Hello,\n\n"
+            "Thanks for the meeting earlier. Here is a follow-up summary and next-step list.\n\n"
+            f"Topic: {task['title']}\n\n"
+            f"Summary:\n{task.get('summary', '')}\n\n"
+            f"Actions captured:\n{checklist_text}\n\n"
+            f"Supporting notes:\n{notes_text}\n\n"
+            "Please reply with any corrections or additions."
         )
     return (
         f"Hello,\n\n"
-        f"We would like to request information/quotation support for the following task:\n\n"
+        f"Please find the current work brief for the following task.\n\n"
         f"Task: {task['title']}\n"
         f"Summary: {task.get('summary', '')}\n\n"
+        f"Current state:\n- Status: {task.get('status', '')}\n- Priority: {task.get('priority', '')}\n- Owner: {task.get('owner', '')}\n\n"
         f"Linked files:\n{file_list}\n\n"
+        f"Attachments:\n{attachment_list}\n\n"
         f"Requested actions:\n{checklist_text}\n\n"
-        f"Notes:\n{task.get('notes', '')}\n\n"
+        f"Notes:\n{notes_text}\n\n"
         "Thanks."
     )
 
 
 def _create_email_draft_record(task: dict[str, Any], draft_type: str, recipient: str) -> dict[str, Any]:
     normalized = _normalize_draft_type(draft_type)
+    created_at = utc_now()
     return {
         "id": new_id(),
         "type": normalized,
         "recipient": recipient,
         "subject": _draft_subject(task, normalized),
         "body": _draft_body(task, normalized),
-        "created_at": utc_now(),
+        "status": "draft",
+        "created_at": created_at,
+        "updated_at": created_at,
     }
 
 
@@ -1672,11 +1821,17 @@ def _build_work_brief_markdown(task: dict[str, Any]) -> str:
 def _normalize_draft_type(draft_type: str) -> str:
     normalized = str(draft_type).strip().lower()
     if normalized == "rfq":
-        return "work_brief"
+        return "supplier_rfq"
     if normalized == "status":
-        return "status"
+        return "status_update"
     if normalized == "work brief":
         return "work_brief"
+    if normalized == "supplier rfq":
+        return "supplier_rfq"
+    if normalized == "internal action request":
+        return "internal_action_request"
+    if normalized == "meeting follow up":
+        return "meeting_follow_up"
     return normalized or "work_brief"
 
 
@@ -1684,9 +1839,44 @@ def _draft_type_label(draft_type: str) -> str:
     normalized = _normalize_draft_type(draft_type)
     if normalized == "work_brief":
         return "Work Brief"
-    if normalized == "status":
+    if normalized == "status_update":
         return "Status Update"
+    if normalized == "supplier_rfq":
+        return "Supplier RFQ"
+    if normalized == "internal_action_request":
+        return "Internal Action Request"
+    if normalized == "meeting_follow_up":
+        return "Meeting Follow-up"
     return normalized.replace("_", " ").title()
+
+
+def _normalize_email_draft_status(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"copied", "exported"}:
+        return normalized
+    return "draft"
+
+
+def _email_draft_download_payload(draft: dict[str, Any], export_format: str) -> tuple[str, str, str]:
+    normalized = export_format if export_format in {"txt", "eml"} else "txt"
+    if normalized == "eml":
+        lines = [
+            f"To: {draft.get('recipient', '')}",
+            f"Subject: {draft.get('subject', '')}",
+            "MIME-Version: 1.0",
+            "Content-Type: text/plain; charset=utf-8",
+            "",
+            draft.get("body", ""),
+        ]
+        return ("\n".join(lines), "message/rfc822", "eml")
+    content = (
+        f"Type: {draft.get('type_label', _draft_type_label(draft.get('type', 'work_brief')))}\n"
+        f"Recipient: {draft.get('recipient', '')}\n"
+        f"Subject: {draft.get('subject', '')}\n"
+        f"Status: {draft.get('status', 'draft')}\n\n"
+        f"{draft.get('body', '')}"
+    )
+    return (content, "text/plain", "txt")
 
 
 def _move_task_to_status(app: Flask, task_id: str, status: str) -> None:

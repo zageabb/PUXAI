@@ -343,7 +343,7 @@
           <div class="section-heading">
             <div>
               <div class="section-kicker">Email Actions</div>
-              <h2>Drafts and Work Brief flows</h2>
+              <h2>Local draft workflows</h2>
             </div>
           </div>
           <form action="{{ url_for('create_email_draft', task_id=task.id) }}" method="post" class="stack-form">
@@ -355,18 +355,56 @@
               <label class="form-label">Draft type</label>
               <select class="form-select" name="draft_type">
                 <option value="work_brief">Work Brief</option>
-                <option value="status">Status update</option>
+                <option value="status_update">Status update</option>
+                <option value="supplier_rfq">Supplier RFQ</option>
+                <option value="internal_action_request">Internal action request</option>
+                <option value="meeting_follow_up">Meeting follow-up</option>
               </select>
             </div>
             <button class="btn btn-outline-primary" type="submit">Create email draft</button>
           </form>
           <div class="run-list mt-4">
-            {% for draft in task.email_drafts[:6] %}
+            {% for draft in email_draft_details[:8] %}
               <article class="run-card">
-                <div class="run-meta">{{ draft.type }} • {{ draft.created_at[:19].replace('T', ' ') }}</div>
+                <div class="run-meta">{{ draft.type_label }} • Created {{ draft.created_at[:19].replace('T', ' ') }}</div>
                 <div class="run-summary">{{ draft.subject }}</div>
-                {% if draft.recipient %}<div class="small text-muted">{{ draft.recipient }}</div>{% endif %}
-                <pre class="code-block compact-code">{{ draft.body }}</pre>
+                <div class="small text-muted">
+                  {% if draft.recipient %}{{ draft.recipient }}{% else %}No recipient yet{% endif %}
+                  • Status: {{ draft.status }}
+                  • Updated {{ draft.updated_at[:19].replace('T', ' ') }}
+                </div>
+                <div class="task-action-row mt-3">
+                  <button class="btn btn-sm btn-outline-dark" type="button" data-copy-text="{{ draft.subject }}" data-copy-label="Copy subject" data-copy-status-url="{{ url_for('update_email_draft_status', task_id=task.id, draft_id=draft.id) }}">Copy subject</button>
+                  <button class="btn btn-sm btn-outline-dark" type="button" data-copy-text="{{ draft.body }}" data-copy-label="Copy body" data-copy-status-url="{{ url_for('update_email_draft_status', task_id=task.id, draft_id=draft.id) }}">Copy body</button>
+                  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('download_email_draft', task_id=task.id, draft_id=draft.id, format='txt') }}">Download .txt</a>
+                  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('download_email_draft', task_id=task.id, draft_id=draft.id, format='eml') }}">Download .eml</a>
+                </div>
+                <details class="task-detail-shell mt-3">
+                  <summary>Preview and edit draft</summary>
+                  <form action="{{ url_for('update_email_draft', task_id=task.id, draft_id=draft.id) }}" method="post" class="stack-form mt-3">
+                    <div>
+                      <label class="form-label">Recipient</label>
+                      <input class="form-control" type="text" name="recipient" value="{{ draft.recipient }}">
+                    </div>
+                    <div>
+                      <label class="form-label">Subject</label>
+                      <input class="form-control" type="text" name="subject" value="{{ draft.subject }}">
+                    </div>
+                    <div>
+                      <label class="form-label">Status</label>
+                      <select class="form-select" name="status">
+                        {% for status in ["draft", "copied", "exported"] %}
+                          <option value="{{ status }}" {% if status == draft.status %}selected{% endif %}>{{ status }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="form-label">Body</label>
+                      <textarea class="form-control mermaid-editor" name="body" rows="14">{{ draft.body }}</textarea>
+                    </div>
+                    <button class="btn btn-outline-primary" type="submit">Save draft changes</button>
+                  </form>
+                </details>
               </article>
             {% else %}
               <div class="empty-column-card">No email drafts yet.</div>
