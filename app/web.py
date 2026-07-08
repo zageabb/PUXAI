@@ -61,17 +61,23 @@ def create_app(
     app.config["OS_NAME"] = os_name
     app.config["LAUNCHER"] = launcher
     app.config["HISTORY_FILE"] = history_file
-    app.config["BOARD_STORE"] = BoardStore(config.data_dir)
+    app.config["BOARD_STORE"] = BoardStore(
+        config.data_dir,
+        default_workspace_id=config.workspace_default_id,
+    )
 
     @app.context_processor
     def inject_globals() -> dict[str, Any]:
-        board = _board_store(app).load()
+        store = _board_store(app)
+        board = store.load()
         ollama_status = _ollama_status(config)
         return {
             "app_config": config,
             "os_name": os_name,
             "launchable_apps": launcher.list_apps() if launcher else [],
             "ollama_status": ollama_status,
+            "workspace_list": store.list_workspaces(),
+            "active_workspace": store.get_active_workspace(),
             "board_kanban_mermaid": board.get("board_mermaid_artifacts", {}).get("kanban", ""),
             "board_stitched_mermaid": board.get("board_mermaid_artifacts", {}).get("stitched", ""),
             "render_markdown": _render_markdown,
@@ -79,15 +85,47 @@ def create_app(
 
     @app.get("/")
     def index() -> str:
-        board = _board_store(app).load()
+        store = _board_store(app)
+        board = store.load()
         _refresh_mermaid(app)
-        board = _board_store(app).load()
+        board = store.load()
         return render_template(
             "index.html",
             board=board,
             tasks_by_status=_tasks_by_status(board),
             os_name=os_name,
         )
+
+    @app.post("/workspaces")
+    def create_workspace() -> Any:
+        name = request.form.get("name", "").strip()
+        description = request.form.get("description", "").strip()
+        if not name:
+            flash("A workspace name is required.", "warning")
+            return redirect(url_for("index"))
+        try:
+            workspace = _board_store(app).create_workspace(name, description)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.exception("Workspace creation failed")
+            flash(f"Workspace creation failed: {exc}", "danger")
+            return redirect(url_for("index"))
+        flash(f"Created workspace '{workspace['name']}'.", "success")
+        return redirect(url_for("index"))
+
+    @app.post("/workspaces/switch")
+    def switch_workspace() -> Any:
+        workspace_id = request.form.get("workspace_id", "").strip()
+        if not workspace_id:
+            flash("Choose a workspace first.", "warning")
+            return redirect(url_for("index"))
+        try:
+            workspace = _board_store(app).set_active_workspace(workspace_id)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.exception("Workspace switch failed")
+            flash(f"Workspace switch failed: {exc}", "danger")
+            return redirect(url_for("index"))
+        flash(f"Switched to workspace '{workspace['name']}'.", "success")
+        return redirect(url_for("index"))
 
     @app.get("/tasks/new")
     def new_task() -> str:
@@ -690,7 +728,7 @@ def _resolve_todo_item(board: dict[str, Any], args: dict[str, Any]) -> dict[str,
 
 
 def _task_files_dir(app: Flask, task_id: str) -> Path:
-    return Path(app.config["APP_CONFIG"].data_dir) / "task_files" / task_id
+    return _board_store(app).current_workspace_root() / "task_files" / task_id
 
 
 def _checklist_to_text(items: list[dict[str, Any]]) -> str:

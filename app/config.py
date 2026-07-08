@@ -18,6 +18,7 @@ class AppConfig:
     app_name: str = "PUXAI"
     data_dir: str = "./app/data"
     default_workspace: str = "."
+    workspace_default_id: str = "personal"
 
     enable_ai: bool = True
     ai_backend: str = "ollama"
@@ -85,6 +86,11 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
         "general",
         "default_workspace",
         fallback=AppConfig.default_workspace,
+    )
+    workspace_default_id = parser.get(
+        "general",
+        "workspace_default_id",
+        fallback=AppConfig.workspace_default_id,
     )
 
     enable_ai = _getboolean(parser, "features", "enable_ai", AppConfig.enable_ai)
@@ -168,6 +174,7 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
         app_name=app_name,
         data_dir=str(Path(data_dir)),
         default_workspace=default_workspace,
+        workspace_default_id=workspace_default_id,
         enable_ai=enable_ai,
         ai_backend=ai_backend,
         enable_tasks=enable_tasks,

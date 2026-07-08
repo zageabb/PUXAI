@@ -4,11 +4,13 @@ from copy import deepcopy
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 from typing import Any
 from uuid import uuid4
 
 
 DEFAULT_STATUSES = ["Backlog", "Ready", "In Progress", "Blocked", "Review", "Done"]
+DEFAULT_WORKSPACE_ID = "personal"
 DEFAULT_EXECUTOR_ACTIONS = [
     "repo_scan",
     "diff_summary",
@@ -153,28 +155,68 @@ def default_board() -> dict[str, Any]:
     }
 
 
+def default_workspace_metadata(
+    workspace_id: str = DEFAULT_WORKSPACE_ID,
+    name: str = "Personal",
+    description: str = "Default local PUXAI workspace.",
+) -> dict[str, str]:
+    now = utc_now()
+    return {
+        "id": workspace_id,
+        "name": name,
+        "description": description,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 class BoardStore:
-    def __init__(self, data_dir: str) -> None:
+    def __init__(self, data_dir: str, default_workspace_id: str = DEFAULT_WORKSPACE_ID) -> None:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.board_file = self.data_dir / "board.json"
+        self.legacy_board_file = self.data_dir / "board.json"
+        self.workspaces_dir = self.data_dir / "workspaces"
+        self.workspaces_dir.mkdir(parents=True, exist_ok=True)
+        self.state_file = self.data_dir / "workspace_state.json"
+        normalized_default = self._slugify_workspace_id(default_workspace_id) or DEFAULT_WORKSPACE_ID
+        self.default_workspace_id = normalized_default
+        self._ensure_workspace_structure()
 
-    def load(self) -> dict[str, Any]:
-        if not self.board_file.exists():
+    def load(self, workspace_id: str | None = None) -> dict[str, Any]:
+        board_file = self._workspace_board_file(workspace_id)
+        if not board_file.exists():
             board = default_board()
-            self.save(board)
-            return board
+            metadata = self.get_workspace(workspace_id) or default_workspace_metadata(
+                self._active_workspace_id(workspace_id),
+                self._humanize_workspace_name(self._active_workspace_id(workspace_id)),
+                "Local PUXAI workspace.",
+            )
+            board["board_title"] = metadata["name"]
+            if metadata["description"]:
+                board["board_summary"] = metadata["description"]
+            self.save(board, workspace_id=workspace_id)
+            return self._normalize(board)
         try:
-            payload = json.loads(self.board_file.read_text(encoding="utf-8"))
+            payload = json.loads(board_file.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             payload = default_board()
-            self.save(payload)
+            self.save(payload, workspace_id=workspace_id)
         return self._normalize(payload)
 
-    def save(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def save(self, payload: dict[str, Any], workspace_id: str | None = None) -> dict[str, Any]:
+        active_workspace_id = self._active_workspace_id(workspace_id)
         normalized = self._normalize(payload)
         normalized["updated_at"] = utc_now()
-        self.board_file.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+        board_file = self._workspace_board_file(active_workspace_id)
+        board_file.parent.mkdir(parents=True, exist_ok=True)
+        board_file.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+        metadata = self.get_workspace(active_workspace_id) or default_workspace_metadata(
+            active_workspace_id,
+            normalized.get("board_title", self._humanize_workspace_name(active_workspace_id)),
+            normalized.get("board_summary", ""),
+        )
+        metadata["updated_at"] = normalized["updated_at"]
+        self._save_workspace_metadata(metadata)
         return normalized
 
     def add_task(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -238,6 +280,85 @@ class BoardStore:
         board["chat_history"] = board["chat_history"][-20:]
         return self.save(board)
 
+    def list_workspaces(self) -> list[dict[str, str]]:
+        workspaces: list[dict[str, str]] = []
+        for workspace_dir in sorted(self.workspaces_dir.iterdir(), key=lambda item: item.name):
+            if not workspace_dir.is_dir():
+                continue
+            metadata = self.get_workspace(workspace_dir.name)
+            if metadata is not None:
+                workspaces.append(metadata)
+        if not any(item["id"] == self.default_workspace_id for item in workspaces):
+            workspaces.insert(
+                0,
+                default_workspace_metadata(
+                    self.default_workspace_id,
+                    self._humanize_workspace_name(self.default_workspace_id),
+                    "Default local PUXAI workspace.",
+                ),
+            )
+        return sorted(workspaces, key=lambda item: item["created_at"])
+
+    def get_workspace(self, workspace_id: str | None = None) -> dict[str, str] | None:
+        active_workspace_id = self._active_workspace_id(workspace_id)
+        metadata_file = self._workspace_meta_file(active_workspace_id)
+        if not metadata_file.exists():
+            return None
+        try:
+            payload = json.loads(metadata_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+        return self._normalize_workspace_metadata(payload, active_workspace_id)
+
+    def get_active_workspace_id(self) -> str:
+        state = self._load_state()
+        return self._validate_workspace_id(state.get("active_workspace_id", self.default_workspace_id))
+
+    def get_active_workspace(self) -> dict[str, str]:
+        workspace = self.get_workspace(self.get_active_workspace_id())
+        if workspace is not None:
+            return workspace
+        fallback = default_workspace_metadata(
+            self.default_workspace_id,
+            self._humanize_workspace_name(self.default_workspace_id),
+            "Default local PUXAI workspace.",
+        )
+        self._save_workspace_metadata(fallback)
+        return fallback
+
+    def set_active_workspace(self, workspace_id: str) -> dict[str, str]:
+        metadata = self.get_workspace(workspace_id)
+        if metadata is None:
+            raise ValueError(f"Unknown workspace id: {workspace_id}")
+        state = self._load_state()
+        state["active_workspace_id"] = metadata["id"]
+        self._save_state(state)
+        return metadata
+
+    def create_workspace(
+        self,
+        name: str,
+        description: str = "",
+        workspace_id: str | None = None,
+    ) -> dict[str, str]:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Workspace name is required.")
+        preferred_id = self._slugify_workspace_id(workspace_id or clean_name) or DEFAULT_WORKSPACE_ID
+        resolved_id = self._unique_workspace_id(preferred_id)
+        metadata = default_workspace_metadata(resolved_id, clean_name, description.strip())
+        self._save_workspace_metadata(metadata)
+        board = default_board()
+        board["board_title"] = clean_name
+        if description.strip():
+            board["board_summary"] = description.strip()
+        self.save(board, workspace_id=resolved_id)
+        self.set_active_workspace(resolved_id)
+        return metadata
+
+    def current_workspace_root(self) -> Path:
+        return self._workspace_dir(self.get_active_workspace_id())
+
     def _normalize(self, payload: dict[str, Any]) -> dict[str, Any]:
         board = deepcopy(default_board())
         board.update(payload or {})
@@ -268,6 +389,114 @@ class BoardStore:
         }
         board.pop("board_mermaid", None)
         return board
+
+    def _ensure_workspace_structure(self) -> None:
+        self.workspaces_dir.mkdir(parents=True, exist_ok=True)
+        default_metadata = self.get_workspace(self.default_workspace_id)
+        if default_metadata is None:
+            self._save_workspace_metadata(
+                default_workspace_metadata(
+                    self.default_workspace_id,
+                    self._humanize_workspace_name(self.default_workspace_id),
+                    "Default local PUXAI workspace.",
+                )
+            )
+        self._migrate_legacy_board()
+        state = self._load_state()
+        active_workspace_id = self._validate_workspace_id(
+            state.get("active_workspace_id", self.default_workspace_id)
+        )
+        if self.get_workspace(active_workspace_id) is None:
+            active_workspace_id = self.default_workspace_id
+        self._save_state({"active_workspace_id": active_workspace_id})
+
+    def _migrate_legacy_board(self) -> None:
+        default_board_file = self._workspace_board_file(self.default_workspace_id)
+        if default_board_file.exists():
+            return
+        if self.legacy_board_file.exists():
+            try:
+                payload = json.loads(self.legacy_board_file.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                payload = default_board()
+            normalized = self._normalize(payload)
+            default_board_file.parent.mkdir(parents=True, exist_ok=True)
+            default_board_file.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+            metadata = self.get_workspace(self.default_workspace_id) or default_workspace_metadata(
+                self.default_workspace_id,
+                normalized.get("board_title", self._humanize_workspace_name(self.default_workspace_id)),
+                normalized.get("board_summary", "Migrated from the legacy single-board storage."),
+            )
+            metadata["updated_at"] = normalized.get("updated_at", utc_now())
+            self._save_workspace_metadata(metadata)
+            return
+        self.save(default_board(), workspace_id=self.default_workspace_id)
+
+    def _workspace_dir(self, workspace_id: str | None = None) -> Path:
+        return self.workspaces_dir / self._active_workspace_id(workspace_id)
+
+    def _workspace_board_file(self, workspace_id: str | None = None) -> Path:
+        return self._workspace_dir(workspace_id) / "board.json"
+
+    def _workspace_meta_file(self, workspace_id: str | None = None) -> Path:
+        return self._workspace_dir(workspace_id) / "workspace.json"
+
+    def _active_workspace_id(self, workspace_id: str | None = None) -> str:
+        return self._validate_workspace_id(workspace_id or self.get_active_workspace_id())
+
+    def _load_state(self) -> dict[str, str]:
+        if not self.state_file.exists():
+            return {"active_workspace_id": self.default_workspace_id}
+        try:
+            payload = json.loads(self.state_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {"active_workspace_id": self.default_workspace_id}
+        return {
+            "active_workspace_id": self._validate_workspace_id(
+                payload.get("active_workspace_id", self.default_workspace_id)
+            )
+        }
+
+    def _save_state(self, payload: dict[str, str]) -> None:
+        self.state_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def _save_workspace_metadata(self, payload: dict[str, str]) -> dict[str, str]:
+        metadata = self._normalize_workspace_metadata(payload, payload.get("id", self.default_workspace_id))
+        metadata_file = self._workspace_meta_file(metadata["id"])
+        metadata_file.parent.mkdir(parents=True, exist_ok=True)
+        metadata_file.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        return metadata
+
+    def _normalize_workspace_metadata(self, payload: dict[str, Any], fallback_id: str) -> dict[str, str]:
+        now = utc_now()
+        workspace_id = self._validate_workspace_id(payload.get("id", fallback_id))
+        return {
+            "id": workspace_id,
+            "name": str(payload.get("name", self._humanize_workspace_name(workspace_id))).strip()
+            or self._humanize_workspace_name(workspace_id),
+            "description": str(payload.get("description", "")).strip(),
+            "created_at": str(payload.get("created_at", now)),
+            "updated_at": str(payload.get("updated_at", now)),
+        }
+
+    def _unique_workspace_id(self, base_id: str) -> str:
+        if self.get_workspace(base_id) is None:
+            return base_id
+        suffix = 2
+        while self.get_workspace(f"{base_id}-{suffix}") is not None:
+            suffix += 1
+        return f"{base_id}-{suffix}"
+
+    def _validate_workspace_id(self, workspace_id: str | None) -> str:
+        normalized = self._slugify_workspace_id(workspace_id or "")
+        return normalized or self.default_workspace_id
+
+    def _slugify_workspace_id(self, value: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", str(value).strip().lower())
+        return slug.strip("-")
+
+    def _humanize_workspace_name(self, workspace_id: str) -> str:
+        return workspace_id.replace("-", " ").title()
 
 
 def _normalize_task(raw_task: dict[str, Any], valid_statuses: list[str]) -> dict[str, Any]:

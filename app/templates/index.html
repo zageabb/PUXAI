@@ -8,6 +8,12 @@
       <span class="eyebrow">Agentic Workspace</span>
       <h1 class="display-title">{{ board.board_title }}</h1>
       <p class="hero-copy">{{ board.board_summary }}</p>
+      <div class="small text-white-50 mb-3">
+        Active workspace: <strong>{{ active_workspace.name }}</strong>
+        {% if active_workspace.description %}
+          • {{ active_workspace.description }}
+        {% endif %}
+      </div>
       <div class="hero-actions">
         <a class="btn btn-light" href="{{ url_for('new_task') }}">New task</a>
         <form action="{{ url_for('refresh_mermaid') }}" method="post">
@@ -23,6 +29,33 @@
           Hide AI side
         </button>
       </div>
+      <div class="two-up-grid mt-4">
+        <form action="{{ url_for('switch_workspace') }}" method="post" class="stack-form">
+          <div>
+            <label class="form-label text-white">Switch workspace</label>
+            <select class="form-select" name="workspace_id" onchange="this.form.submit()">
+              {% for workspace in workspace_list %}
+                <option value="{{ workspace.id }}" {% if workspace.id == active_workspace.id %}selected{% endif %}>
+                  {{ workspace.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        </form>
+        <form action="{{ url_for('create_workspace') }}" method="post" class="stack-form">
+          <div class="form-grid">
+            <div>
+              <label class="form-label text-white">New workspace</label>
+              <input class="form-control" type="text" name="name" placeholder="Example: SCM Digitalisation">
+            </div>
+            <div>
+              <label class="form-label text-white">Description</label>
+              <input class="form-control" type="text" name="description" placeholder="Optional summary for this workspace">
+            </div>
+          </div>
+          <button class="btn btn-outline-light align-self-start" type="submit">Create workspace</button>
+        </form>
+      </div>
     </div>
     <div class="hero-metrics">
       <div class="hero-metric">
@@ -37,6 +70,29 @@
         <span class="hero-metric-label">Models</span>
         <strong>{{ ollama_status.models|length if ollama_status.available else 0 }}</strong>
       </div>
+    </div>
+  </section>
+
+  <section class="glass-panel p-4 mb-4">
+    <div class="section-heading">
+      <div>
+        <div class="section-kicker">Workspace Profiles</div>
+        <h2>Available workspaces</h2>
+      </div>
+      <div class="section-note">Each workspace keeps separate tasks, notes, todos, chat history, agent runs, Mermaid views, and repo context.</div>
+    </div>
+    <div class="task-artifact-preview-grid">
+      {% for workspace in workspace_list %}
+        <article class="artifact-preview-card">
+          <div class="mini-label">{{ workspace.id }}</div>
+          <strong>{{ workspace.name }}</strong>
+          <p class="small text-muted mb-2">{{ workspace.description or "No description yet." }}</p>
+          <div class="small text-muted">Created {{ workspace.created_at[:10] }}</div>
+          {% if workspace.id == active_workspace.id %}
+            <div class="mt-2"><span class="tag-chip">Active</span></div>
+          {% endif %}
+        </article>
+      {% endfor %}
     </div>
   </section>
 

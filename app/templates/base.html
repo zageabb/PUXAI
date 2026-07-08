@@ -20,6 +20,9 @@
           </a>
           <div class="navbar-nav gap-lg-3 small align-items-lg-center">
             <span class="nav-link disabled">Cross-platform local AI workspace</span>
+            <span class="nav-link disabled">
+              Workspace: {{ active_workspace.name if active_workspace else "Personal" }}
+            </span>
             <span class="nav-link disabled">{{ os_name }}</span>
             <span class="nav-link disabled">
               {% if ollama_status.available %}
