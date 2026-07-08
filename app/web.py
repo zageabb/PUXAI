@@ -571,6 +571,7 @@ def create_app(
                 "ok": True,
                 "reply": reply,
                 "actions": action_results,
+                "refresh_board": any(result.get("ok") for result in action_results),
                 "history": board.get("chat_history", []) + [user_message, assistant_message],
             }
         )
@@ -632,6 +633,60 @@ def _find_note(board: dict[str, Any], note_id: str) -> dict[str, Any] | None:
 
 def _find_todo_item(board: dict[str, Any], todo_id: str) -> dict[str, Any] | None:
     return next((item for item in board.get("todo_items", []) if item["id"] == todo_id), None)
+
+
+def _match_by_text(
+    items: list[dict[str, Any]],
+    field_name: str,
+    value: str,
+) -> dict[str, Any] | None:
+    target = value.strip().casefold()
+    if not target:
+        return None
+    exact_matches = [
+        item for item in items
+        if str(item.get(field_name, "")).strip().casefold() == target
+    ]
+    if len(exact_matches) == 1:
+        return exact_matches[0]
+
+    partial_matches = [
+        item for item in items
+        if target in str(item.get(field_name, "")).strip().casefold()
+    ]
+    if len(partial_matches) == 1:
+        return partial_matches[0]
+    return None
+
+
+def _resolve_task(board: dict[str, Any], args: dict[str, Any]) -> dict[str, Any] | None:
+    task_id = str(args.get("task_id", "")).strip()
+    if task_id:
+        task = _find_task(board, task_id)
+        if task is not None:
+            return task
+    task_title = str(args.get("task_title", "")).strip() or str(args.get("title", "")).strip()
+    return _match_by_text(board.get("tasks", []), "title", task_title)
+
+
+def _resolve_note(board: dict[str, Any], args: dict[str, Any]) -> dict[str, Any] | None:
+    note_id = str(args.get("note_id", "")).strip()
+    if note_id:
+        note = _find_note(board, note_id)
+        if note is not None:
+            return note
+    note_title = str(args.get("note_title", "")).strip() or str(args.get("title", "")).strip()
+    return _match_by_text(board.get("notes", []), "title", note_title)
+
+
+def _resolve_todo_item(board: dict[str, Any], args: dict[str, Any]) -> dict[str, Any] | None:
+    todo_id = str(args.get("todo_id", "")).strip()
+    if todo_id:
+        todo_item = _find_todo_item(board, todo_id)
+        if todo_item is not None:
+            return todo_item
+    todo_text = str(args.get("todo_text", "")).strip() or str(args.get("text", "")).strip()
+    return _match_by_text(board.get("todo_items", []), "text", todo_text)
 
 
 def _task_files_dir(app: Flask, task_id: str) -> Path:
@@ -935,9 +990,9 @@ def _execute_chat_action(
         return {"summary": f"Created task '{task['title']}'.", "task_id": task["id"]}
 
     if name == "create_task_from_note":
-        note = _find_note(board, str(args.get("note_id", "")).strip())
+        note = _resolve_note(board, args)
         if note is None:
-            raise ValueError("Note not found.")
+            raise ValueError("Note not found. Provide a note id or an exact note title.")
         task = _build_task_payload(
             board=board,
             title=note["title"],
@@ -951,12 +1006,15 @@ def _execute_chat_action(
         )
         _board_store(app).add_task(task)
         _refresh_mermaid(app)
-        return {"summary": f"Created task '{task['title']}' from note.", "task_id": task["id"]}
+        return {
+            "summary": f"Created task '{task['title']}' from note.",
+            "task_id": task["id"],
+        }
 
     if name == "create_task_from_todo":
-        todo_item = _find_todo_item(board, str(args.get("todo_id", "")).strip())
+        todo_item = _resolve_todo_item(board, args)
         if todo_item is None:
-            raise ValueError("Todo item not found.")
+            raise ValueError("Todo item not found. Provide a todo id or the exact todo text.")
         task = _build_task_payload(
             board=board,
             title=todo_item["text"][:100] or "Captured todo task",
@@ -970,25 +1028,34 @@ def _execute_chat_action(
         )
         _board_store(app).add_task(task)
         _refresh_mermaid(app)
-        return {"summary": f"Created task '{task['title']}' from todo.", "task_id": task["id"]}
+        return {
+            "summary": f"Created task '{task['title']}' from todo.",
+            "task_id": task["id"],
+        }
 
     if name == "create_email_draft":
-        task = _find_task(board, str(args.get("task_id", "")).strip())
+        task = _resolve_task(board, args)
         if task is None:
-            raise ValueError("Task not found.")
+            raise ValueError("Task not found. Provide a task id or an exact task title.")
         draft_type = str(args.get("draft_type", "rfq")).strip() or "rfq"
         recipient = str(args.get("recipient", "")).strip()
         draft = _create_email_draft_record(task, draft_type, recipient)
         drafts = list(task.get("email_drafts", []))
         drafts.insert(0, draft)
         _board_store(app).update_task(task["id"], {"email_drafts": drafts[:10]})
-        return {"summary": f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'.", "task_id": task["id"]}
+        return {
+            "summary": (
+                f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'. "
+                "Open Edit on that task to view the draft."
+            ),
+            "task_id": task["id"],
+        }
 
     if name == "update_task":
-        task_id = str(args.get("task_id", "")).strip()
-        task = _find_task(board, task_id)
+        task = _resolve_task(board, args)
         if task is None:
-            raise ValueError("Task not found.")
+            raise ValueError("Task not found. Provide a task id or an exact task title.")
+        task_id = task["id"]
         patch: dict[str, Any] = {}
         for key in ("title", "summary", "priority", "owner", "notes", "agent_brief"):
             if key in args:
@@ -1007,22 +1074,22 @@ def _execute_chat_action(
         return {"summary": f"Updated task '{task['title']}'.", "task_id": task_id}
 
     if name == "move_task":
-        task_id = str(args.get("task_id", "")).strip()
         status = str(args.get("status", "")).strip()
-        task = _find_task(board, task_id)
+        task = _resolve_task(board, args)
         if task is None:
-            raise ValueError("Task not found.")
+            raise ValueError("Task not found. Provide a task id or an exact task title.")
         if status not in board["statuses"]:
             raise ValueError("Status not found.")
+        task_id = task["id"]
         _move_task_to_status(app, task_id, status)
         return {"summary": f"Moved task '{task['title']}' to {status}.", "task_id": task_id}
 
     if name == "run_executor":
-        task_id = str(args.get("task_id", "")).strip()
         action = str(args.get("action", "")).strip()
-        task = _find_task(board, task_id)
+        task = _resolve_task(board, args)
         if task is None:
-            raise ValueError("Task not found.")
+            raise ValueError("Task not found. Provide a task id or an exact task title.")
+        task_id = task["id"]
         result = execute_task_action(task, action)
         patch = dict(result.get("task_patch", {}))
         if patch:

@@ -41,6 +41,11 @@ if (chatForm && chatMessage) {
       });
       const payload = await response.json();
       appendMessage("assistant", payload.reply || "The assistant returned an empty response.");
+      if (payload.refresh_board) {
+        window.setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      }
     } catch (error) {
       appendMessage("assistant", `The assistant request failed: ${error}`);
     }
