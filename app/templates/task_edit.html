@@ -237,11 +237,29 @@
             </div>
           </div>
           <div class="executor-grid">
-            {% for action in task.executor_actions %}
-              <form action="{{ url_for('run_executor', task_id=task.id) }}" method="post">
+            {% for action in executor_action_details %}
+              <form action="{{ url_for('run_executor', task_id=task.id) }}" method="post" class="artifact-preview-card stack-form">
                 <input type="hidden" name="next" value="{{ url_for('edit_task', task_id=task.id) }}">
-                <input type="hidden" name="action" value="{{ action }}">
-                <button class="btn btn-sm btn-outline-secondary w-100" type="submit">{{ action.replace('_', ' ') }}</button>
+                <input type="hidden" name="action" value="{{ action.id }}">
+                <div class="mini-label">{{ action.risk_level }} risk</div>
+                <strong>{{ action.label }}</strong>
+                <div class="small text-muted">{{ action.description }}</div>
+                <div class="small">
+                  {% for line in action.preview_lines %}
+                    <div>{{ line }}</div>
+                  {% endfor %}
+                </div>
+                {% if action.requires_confirmation %}
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="confirm_run" value="1">
+                    <span class="form-check-label">I understand this action will read the files shown above.</span>
+                  </label>
+                {% else %}
+                  <input type="hidden" name="confirm_run" value="1">
+                {% endif %}
+                <button class="btn btn-sm btn-outline-secondary w-100" type="submit">
+                  {% if action.requires_confirmation %}Confirm and run{% else %}Run action{% endif %}
+                </button>
               </form>
             {% endfor %}
           </div>

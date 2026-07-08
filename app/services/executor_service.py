@@ -10,6 +10,76 @@ from app.services.repo_context_service import ingest_repository_context, json_pr
 
 
 SAFE_ACTIONS = {"repo_scan", "diff_summary", "generate_mermaid", "document_parse"}
+EXECUTOR_ACTION_METADATA = {
+    "repo_scan": {
+        "id": "repo_scan",
+        "label": "Repository scan",
+        "description": "Index files and refresh repository context from the linked path.",
+        "risk_level": "low",
+        "requires_confirmation": False,
+    },
+    "diff_summary": {
+        "id": "diff_summary",
+        "label": "Diff summary",
+        "description": "Read local git diff and status information from the linked repository.",
+        "risk_level": "low",
+        "requires_confirmation": False,
+    },
+    "generate_mermaid": {
+        "id": "generate_mermaid",
+        "label": "Generate Mermaid",
+        "description": "Refresh task Mermaid artifacts from the current task and repo context.",
+        "risk_level": "low",
+        "requires_confirmation": False,
+    },
+    "document_parse": {
+        "id": "document_parse",
+        "label": "Parse documents",
+        "description": "Read selected task files and extract lightweight summaries into task context.",
+        "risk_level": "medium",
+        "requires_confirmation": True,
+    },
+}
+
+
+def get_executor_action_metadata(action: str) -> dict[str, Any]:
+    normalized_action = action.strip().lower()
+    metadata = EXECUTOR_ACTION_METADATA.get(normalized_action)
+    if metadata is None:
+        raise ValueError(f"Unsupported executor action: {action}")
+    return dict(metadata)
+
+
+def list_executor_actions(actions: list[str]) -> list[dict[str, Any]]:
+    return [get_executor_action_metadata(action) for action in actions if action.strip().lower() in SAFE_ACTIONS]
+
+
+def preview_task_action(task: dict[str, Any], action: str) -> dict[str, Any]:
+    normalized_action = action.strip().lower()
+    metadata = get_executor_action_metadata(normalized_action)
+    repo_context = task.get("repo_context", {}) or {}
+    if normalized_action == "repo_scan":
+        preview_lines = [
+            f"Repository path: {repo_context.get('repo_path', '') or 'Not set'}",
+            f"Focus patterns: {repo_context.get('focus_patterns', '*.py,*.md,*.json')}",
+        ]
+    elif normalized_action == "diff_summary":
+        preview_lines = [
+            f"Repository root: {repo_context.get('repo_root') or repo_context.get('repo_path') or 'Not set'}",
+        ]
+    elif normalized_action == "generate_mermaid":
+        preview_lines = [
+            "Task Mermaid artifacts will be refreshed.",
+            "Current architecture, flow, kanban subview, sequence, and mindmap fields may be replaced.",
+        ]
+    else:
+        selected_files = repo_context.get("selected_files", [])[:6]
+        preview_lines = selected_files or ["No selected files are available yet."]
+
+    return {
+        **metadata,
+        "preview_lines": preview_lines,
+    }
 
 
 def execute_task_action(task: dict[str, Any], action: str) -> dict[str, Any]:

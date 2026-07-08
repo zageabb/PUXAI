@@ -33,7 +33,12 @@ from app.services.board_store import (
     new_id,
     utc_now,
 )
-from app.services.executor_service import execute_task_action, record_executor_run
+from app.services.executor_service import (
+    execute_task_action,
+    get_executor_action_metadata,
+    preview_task_action,
+    record_executor_run,
+)
 from app.services.mermaid_service import build_kanban_mermaid, build_stitched_board_mermaid
 from app.services.repo_context_service import ingest_repository_context
 
@@ -182,6 +187,7 @@ def create_app(
             task=task,
             checklist_text=_checklist_to_text(task.get("checklist", [])),
             task_activity=_board_store(app).list_task_activity(task_id, 50),
+            executor_action_details=_task_executor_action_details(task),
         )
 
     @app.post("/tasks")
@@ -589,6 +595,11 @@ def create_app(
             flash("Task not found.", "warning")
             return redirect(url_for("index"))
         action = request.form.get("action", "").strip()
+        metadata = get_executor_action_metadata(action)
+        confirmed = request.form.get("confirm_run") == "1"
+        if metadata.get("requires_confirmation") and not confirmed:
+            flash(f"{metadata['label']} requires confirmation before it can run.", "warning")
+            return redirect(request.form.get("next") or url_for("edit_task", task_id=task_id))
         try:
             result = execute_task_action(task, action)
         except Exception as exc:  # noqa: BLE001
@@ -1074,6 +1085,14 @@ def _append_activity_event(
     )
 
 
+def _task_executor_action_details(task: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        preview_task_action(task, action)
+        for action in task.get("executor_actions", [])
+        if action
+    ]
+
+
 def _checklist_to_text(items: list[dict[str, Any]]) -> str:
     lines = []
     for item in items:
@@ -1541,6 +1560,15 @@ def _execute_chat_action(
         if task is None:
             raise ValueError("Task not found. Provide a task id or an exact task title.")
         task_id = task["id"]
+        metadata = get_executor_action_metadata(action)
+        if metadata.get("requires_confirmation"):
+            return {
+                "summary": (
+                    f"{metadata['label']} was not run because user confirmation is required. "
+                    "Open the task workspace to review the preview and confirm it manually."
+                ),
+                "task_id": task_id,
+            }
         result = execute_task_action(task, action)
         patch = dict(result.get("task_patch", {}))
         if patch:
