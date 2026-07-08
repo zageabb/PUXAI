@@ -3,6 +3,30 @@ from __future__ import annotations
 import re
 from typing import Any
 
+VALID_MERMAID_PREFIXES = (
+    "flowchart",
+    "graph",
+    "sequenceDiagram",
+    "classDiagram",
+    "stateDiagram",
+    "stateDiagram-v2",
+    "erDiagram",
+    "journey",
+    "gantt",
+    "pie",
+    "mindmap",
+    "timeline",
+    "gitGraph",
+    "kanban",
+    "quadrantChart",
+    "requirementDiagram",
+    "sankey-beta",
+    "xychart-beta",
+    "block-beta",
+    "packet-beta",
+    "architecture-beta",
+)
+
 
 def build_kanban_mermaid(board: dict[str, Any]) -> str:
     lines = ["kanban"]
@@ -119,3 +143,56 @@ def safe_id(value: str) -> str:
 
 def clean_text(value: str) -> str:
     return str(value).replace("[", "(").replace("]", ")").replace('"', "'").replace("\n", " ").strip()
+
+
+def validate_mermaid_text(raw_text: str) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    warnings: list[str] = []
+    first_line = ""
+    diagram_type = ""
+
+    if not text:
+        warnings.append("Mermaid text is empty.")
+        return {
+            "ok": False,
+            "warnings": warnings,
+            "diagram_type": "",
+            "first_line": "",
+        }
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            first_line = stripped
+            break
+
+    if not first_line:
+        warnings.append("Mermaid text does not contain any diagram content.")
+        return {
+            "ok": False,
+            "warnings": warnings,
+            "diagram_type": "",
+            "first_line": "",
+        }
+
+    if first_line.startswith("%%"):
+        warnings.append("The first visible Mermaid line should start with a diagram type such as `flowchart TD` or `kanban`.")
+    else:
+        first_token = first_line.split()[0]
+        diagram_type = first_token
+        if first_token not in VALID_MERMAID_PREFIXES:
+            warnings.append(
+                "The first Mermaid line should start with a recognised diagram type such as "
+                "`flowchart`, `sequenceDiagram`, `kanban`, or `mindmap`."
+            )
+
+    return {
+        "ok": not warnings,
+        "warnings": warnings,
+        "diagram_type": diagram_type,
+        "first_line": first_line,
+    }
+
+
+def mermaid_markdown_block(raw_text: str) -> str:
+    return f"```mermaid\n{str(raw_text or '').strip()}\n```"

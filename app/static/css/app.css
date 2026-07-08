@@ -794,6 +794,23 @@ pre {
   padding: 0.9rem;
 }
 
+.artifact-card-head,
+.artifact-card-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.artifact-card-head {
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.artifact-card-actions {
+  flex-wrap: wrap;
+  justify-content: end;
+}
+
 .board-artifact-button {
   width: 100%;
   text-align: left;
@@ -816,6 +833,42 @@ pre {
   border: 1px solid rgba(16, 34, 48, 0.08);
 }
 
+.mermaid-modal-toolbar,
+.mermaid-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.mermaid-toolbar-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: end;
+}
+
+.mermaid-validation {
+  min-height: 1.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.mermaid-validation.is-warning {
+  color: #9b6a10;
+}
+
+.mermaid-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.mermaid-modal-grid-board {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+}
+
 .mermaid-modal-diagram-shell {
   min-height: 34rem;
   background: #f7fafc;
@@ -826,6 +879,30 @@ pre {
 
 .mermaid-modal-diagram {
   min-height: 100%;
+}
+
+.mermaid-source-shell {
+  border: 1px solid rgba(16, 34, 48, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 1rem;
+}
+
+.mermaid-modal-editor {
+  min-height: 32rem;
+}
+
+.mermaid-error-shell {
+  margin-top: 1rem;
+  border-radius: 1rem;
+  background: #fff5e8;
+  color: #8b5a12;
+  padding: 0.9rem 1rem;
+  white-space: pre-wrap;
+}
+
+.mermaid-task-card .mermaid {
+  min-height: 14rem;
 }
 
 .artifact-preview-card-compact {
@@ -889,6 +966,7 @@ pre {
   .task-detail-grid,
   .task-artifact-preview-grid,
   .board-artifacts,
+  .mermaid-modal-grid,
   .task-mermaid-form-grid,
   .task-edit-grid-mini {
     grid-template-columns: 1fr;

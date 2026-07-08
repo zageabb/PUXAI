@@ -243,15 +243,44 @@
               <div class="section-kicker">Mermaid Preview</div>
               <h2>Additional flows and task visuals</h2>
             </div>
+            <form action="{{ url_for('run_executor', task_id=task.id) }}" method="post">
+              <input type="hidden" name="next" value="{{ url_for('edit_task', task_id=task.id) }}">
+              <input type="hidden" name="action" value="generate_mermaid">
+              <input type="hidden" name="confirm_run" value="1">
+              <button class="btn btn-outline-secondary" type="submit">Regenerate Mermaid</button>
+            </form>
           </div>
           <div class="task-artifact-preview-grid">
-            {% for artifact_name, artifact_body in task.mermaid_artifacts.items() %}
-              {% if artifact_body %}
-                <div class="artifact-preview-card">
-                  <div class="mini-label">{{ artifact_name.replace('_', ' ') }}</div>
-                  <pre class="mermaid">{{ artifact_body }}</pre>
+            {% for artifact in mermaid_artifact_details %}
+              <div class="artifact-preview-card mermaid-task-card">
+                <div class="artifact-card-head">
+                  <div>
+                    <div class="mini-label">{{ artifact.label }}</div>
+                    {% if artifact.validation.ok %}
+                      <div class="small text-muted">Ready to render</div>
+                    {% else %}
+                      <div class="small text-warning">{{ artifact.validation.warnings|join(' ') }}</div>
+                    {% endif %}
+                  </div>
+                  <button
+                    class="btn btn-sm btn-outline-dark"
+                    type="button"
+                    data-mermaid-modal-body="{{ artifact.body|e }}"
+                    data-mermaid-modal-title="{{ artifact.label }}"
+                    data-mermaid-modal-mode="task"
+                    data-mermaid-artifact-name="{{ artifact.name }}"
+                    data-mermaid-save-url="{{ url_for('save_task_mermaid_artifact', task_id=task.id, artifact_name=artifact.name) }}"
+                    data-mermaid-download-mmd-url="{{ url_for('download_task_mermaid_artifact', task_id=task.id, artifact_name=artifact.name, format='mmd') }}"
+                    data-mermaid-download-md-url="{{ url_for('download_task_mermaid_artifact', task_id=task.id, artifact_name=artifact.name, format='md') }}"
+                    data-mermaid-ai-fix-url="{{ url_for('api_fix_task_mermaid', task_id=task.id) if ai_status.available else '' }}"
+                  >
+                    Open editor
+                  </button>
                 </div>
-              {% endif %}
+                <pre class="mermaid">{{ artifact.body }}</pre>
+              </div>
+            {% else %}
+              <div class="empty-column-card">No Mermaid artifacts are available yet. Regenerate Mermaid to create them from the current task context.</div>
             {% endfor %}
           </div>
         </section>
@@ -368,6 +397,51 @@
           </div>
         </section>
       </aside>
+    </div>
+  </div>
+
+  <div class="modal fade" id="mermaidPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content mermaid-modal-content">
+        <div class="modal-header">
+          <div>
+            <div class="section-kicker mb-1">Mermaid Workspace</div>
+            <h2 class="modal-title fs-4" id="mermaidPreviewModalLabel">Mermaid preview</h2>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mermaid-modal-toolbar">
+            <div class="mermaid-validation" id="mermaidValidationMessage"></div>
+            <div class="mermaid-toolbar-actions">
+              <button class="btn btn-outline-dark btn-sm" type="button" id="mermaidCopyButton">Copy Mermaid</button>
+              <a class="btn btn-outline-dark btn-sm" id="mermaidDownloadMmdButton" href="#" download>Download .mmd</a>
+              <a class="btn btn-outline-dark btn-sm" id="mermaidDownloadMdButton" href="#" download>Download .md</a>
+              {% if ai_status.available %}
+                <button class="btn btn-outline-primary btn-sm" type="button" id="mermaidFixAiButton">Fix Mermaid with AI</button>
+              {% endif %}
+            </div>
+          </div>
+          <div class="mermaid-modal-grid">
+            <div class="mermaid-modal-diagram-shell">
+              <div class="mermaid-modal-diagram" id="mermaidPreviewModalDiagram"></div>
+            </div>
+            <div class="mermaid-source-shell">
+              <label class="form-label" for="mermaidSourceEditor">Mermaid source</label>
+              <textarea class="form-control mermaid-editor mermaid-modal-editor" id="mermaidSourceEditor" rows="22"></textarea>
+              <div class="small text-muted mt-2">Edit Mermaid here, preview it, and save back to this task when it looks right.</div>
+            </div>
+          </div>
+          <div class="mermaid-error-shell d-none" id="mermaidRenderErrorShell"></div>
+        </div>
+        <div class="modal-footer mermaid-modal-footer">
+          <button class="btn btn-outline-secondary" type="button" id="mermaidPreviewRefreshButton">Refresh preview</button>
+          <form method="post" id="mermaidSaveForm">
+            <input type="hidden" name="mermaid_code" id="mermaidSaveInput">
+            <button class="btn btn-primary" type="submit">Save Mermaid</button>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 {% endblock %}

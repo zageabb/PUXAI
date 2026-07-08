@@ -284,24 +284,46 @@
           <div class="section-note">Open either preview for a larger rendered view of the board structure and flow.</div>
         </div>
         <div class="task-artifact-preview-grid board-artifacts board-artifacts-expanded">
-          <button
-            class="artifact-preview-card board-artifact-button"
-            type="button"
-            data-mermaid-modal-title="Board kanban"
-            data-mermaid-modal-body="{{ board.board_mermaid_artifacts.kanban|e }}"
-          >
-            <div class="mini-label">Board kanban</div>
+          <div class="artifact-preview-card board-artifact-card">
+            <div class="artifact-card-head">
+              <div class="mini-label">Board kanban</div>
+              <div class="artifact-card-actions">
+                <a class="btn btn-sm btn-outline-dark" href="{{ url_for('download_board_mermaid_artifact', artifact_name='kanban', format='mmd') }}">.mmd</a>
+                <button
+                  class="btn btn-sm btn-outline-dark"
+                  type="button"
+                  data-mermaid-modal-title="Board kanban"
+                  data-mermaid-modal-body="{{ board.board_mermaid_artifacts.kanban|e }}"
+                  data-mermaid-modal-mode="board"
+                  data-mermaid-download-mmd-url="{{ url_for('download_board_mermaid_artifact', artifact_name='kanban', format='mmd') }}"
+                  data-mermaid-download-md-url="{{ url_for('download_board_mermaid_artifact', artifact_name='kanban', format='md') }}"
+                >
+                  Open
+                </button>
+              </div>
+            </div>
             <pre class="mermaid mermaid-board">{{ board.board_mermaid_artifacts.kanban }}</pre>
-          </button>
-          <button
-            class="artifact-preview-card board-artifact-button"
-            type="button"
-            data-mermaid-modal-title="Stitched board"
-            data-mermaid-modal-body="{{ board.board_mermaid_artifacts.stitched|e }}"
-          >
-            <div class="mini-label">Stitched board</div>
+          </div>
+          <div class="artifact-preview-card board-artifact-card">
+            <div class="artifact-card-head">
+              <div class="mini-label">Stitched board</div>
+              <div class="artifact-card-actions">
+                <a class="btn btn-sm btn-outline-dark" href="{{ url_for('download_board_mermaid_artifact', artifact_name='stitched', format='mmd') }}">.mmd</a>
+                <button
+                  class="btn btn-sm btn-outline-dark"
+                  type="button"
+                  data-mermaid-modal-title="Stitched board"
+                  data-mermaid-modal-body="{{ board.board_mermaid_artifacts.stitched|e }}"
+                  data-mermaid-modal-mode="board"
+                  data-mermaid-download-mmd-url="{{ url_for('download_board_mermaid_artifact', artifact_name='stitched', format='mmd') }}"
+                  data-mermaid-download-md-url="{{ url_for('download_board_mermaid_artifact', artifact_name='stitched', format='md') }}"
+                >
+                  Open
+                </button>
+              </div>
+            </div>
             <pre class="mermaid mermaid-board">{{ board.board_mermaid_artifacts.stitched }}</pre>
-          </button>
+          </div>
         </div>
       </section>
 
@@ -507,7 +529,7 @@
   </div>
 
   <div class="modal fade" id="mermaidPreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content mermaid-modal-content">
         <div class="modal-header">
           <div>
@@ -517,9 +539,27 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <div class="mermaid-modal-diagram-shell">
-            <div class="mermaid-modal-diagram" id="mermaidPreviewModalDiagram"></div>
+          <div class="mermaid-modal-toolbar">
+            <div class="mermaid-validation" id="mermaidValidationMessage"></div>
+            <div class="mermaid-toolbar-actions">
+              <button class="btn btn-outline-dark btn-sm" type="button" id="mermaidCopyButton">Copy Mermaid</button>
+              <a class="btn btn-outline-dark btn-sm" id="mermaidDownloadMmdButton" href="#" download>Download .mmd</a>
+              <a class="btn btn-outline-dark btn-sm" id="mermaidDownloadMdButton" href="#" download>Download .md</a>
+            </div>
           </div>
+          <div class="mermaid-modal-grid mermaid-modal-grid-board">
+            <div class="mermaid-modal-diagram-shell">
+              <div class="mermaid-modal-diagram" id="mermaidPreviewModalDiagram"></div>
+            </div>
+            <div class="mermaid-source-shell">
+              <label class="form-label" for="mermaidSourceEditor">Mermaid source</label>
+              <textarea class="form-control mermaid-editor mermaid-modal-editor" id="mermaidSourceEditor" rows="22" readonly></textarea>
+            </div>
+          </div>
+          <div class="mermaid-error-shell d-none" id="mermaidRenderErrorShell"></div>
+        </div>
+        <div class="modal-footer mermaid-modal-footer">
+          <button class="btn btn-outline-secondary" type="button" id="mermaidPreviewRefreshButton">Refresh preview</button>
         </div>
       </div>
     </div>

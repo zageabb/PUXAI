@@ -39,7 +39,12 @@ from app.services.executor_service import (
     preview_task_action,
     record_executor_run,
 )
-from app.services.mermaid_service import build_kanban_mermaid, build_stitched_board_mermaid
+from app.services.mermaid_service import (
+    build_kanban_mermaid,
+    build_stitched_board_mermaid,
+    mermaid_markdown_block,
+    validate_mermaid_text,
+)
 from app.services.repo_context_service import ingest_repository_context
 
 LOGGER = logging.getLogger(__name__)
@@ -200,6 +205,7 @@ def create_app(
             checklist_text=_checklist_to_text(task.get("checklist", [])),
             task_activity=_board_store(app).list_task_activity(task_id, 50),
             executor_action_details=_task_executor_action_details(task),
+            mermaid_artifact_details=_task_mermaid_artifact_details(task),
         )
 
     @app.post("/tasks")
@@ -411,6 +417,69 @@ def create_app(
         _refresh_mermaid(app)
         flash(f"Saved Mermaid artifacts for '{task['title']}'.", "success")
         return redirect(url_for("index"))
+
+    @app.post("/tasks/<task_id>/mermaid/<artifact_name>")
+    def save_task_mermaid_artifact(task_id: str, artifact_name: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        normalized_artifact = _normalize_task_mermaid_artifact_name(artifact_name)
+        if task is None or normalized_artifact is None:
+            flash("Mermaid artifact not found.", "warning")
+            return redirect(url_for("index"))
+
+        raw_text = request.form.get("mermaid_code", "")
+        validation = validate_mermaid_text(raw_text)
+        if not validation["ok"]:
+            flash("Mermaid was not saved. " + " ".join(validation["warnings"]), "warning")
+            return redirect(url_for("edit_task", task_id=task_id))
+
+        updated_artifacts = {**task["mermaid_artifacts"], normalized_artifact: raw_text.strip()}
+        _board_store(app).update_task(task_id, {"mermaid_artifacts": updated_artifacts})
+        _append_activity_event(
+            app,
+            scope="task",
+            task_id=task_id,
+            kind="task.mermaid_saved",
+            title="Mermaid updated",
+            summary=f"Saved {_humanize_mermaid_artifact_name(normalized_artifact)} for '{task['title']}'.",
+            payload={"artifact_name": normalized_artifact},
+        )
+        _refresh_mermaid(app)
+        flash(f"Saved {_humanize_mermaid_artifact_name(normalized_artifact)}.", "success")
+        return redirect(url_for("edit_task", task_id=task_id))
+
+    @app.get("/tasks/<task_id>/mermaid/<artifact_name>/download")
+    def download_task_mermaid_artifact(task_id: str, artifact_name: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        normalized_artifact = _normalize_task_mermaid_artifact_name(artifact_name)
+        if task is None or normalized_artifact is None:
+            abort(404)
+        mermaid_text = str(task.get("mermaid_artifacts", {}).get(normalized_artifact, "")).strip()
+        if not mermaid_text:
+            abort(404)
+        export_format = str(request.args.get("format", "mmd")).strip().lower()
+        return _mermaid_download_response(
+            mermaid_text,
+            filename_root=f"{secure_filename(task['title']) or 'task'}-{normalized_artifact}",
+            export_format=export_format,
+        )
+
+    @app.get("/board/mermaid/<artifact_name>/download")
+    def download_board_mermaid_artifact(artifact_name: str) -> Any:
+        board = _board_store(app).load()
+        normalized_artifact = _normalize_board_mermaid_artifact_name(artifact_name)
+        if normalized_artifact is None:
+            abort(404)
+        mermaid_text = str(board.get("board_mermaid_artifacts", {}).get(normalized_artifact, "")).strip()
+        if not mermaid_text:
+            abort(404)
+        export_format = str(request.args.get("format", "mmd")).strip().lower()
+        return _mermaid_download_response(
+            mermaid_text,
+            filename_root=f"board-{normalized_artifact}",
+            export_format=export_format,
+        )
 
     @app.post("/tasks/<task_id>/edit")
     def save_task_edit(task_id: str) -> Any:
@@ -637,6 +706,59 @@ def create_app(
         _refresh_mermaid(app)
         flash(result.get("summary", f"Executed {action}."), "success")
         return redirect(request.form.get("next") or url_for("index"))
+
+    @app.post("/api/tasks/<task_id>/mermaid/fix")
+    def api_fix_task_mermaid(task_id: str) -> Any:
+        board = _board_store(app).load()
+        task = _find_task(board, task_id)
+        if task is None:
+            return jsonify({"ok": False, "message": "Task not found."}), 404
+
+        client = _ai_backend(config)
+        if not client or not client.is_available():
+            return jsonify(
+                {
+                    "ok": False,
+                    "message": "The configured AI backend is not reachable right now.",
+                }
+            ), 400
+
+        payload = request.get_json(force=True)
+        artifact_name = _normalize_task_mermaid_artifact_name(str(payload.get("artifact_name", "")).strip())
+        mermaid_code = str(payload.get("mermaid_code", "")).strip()
+        render_error = str(payload.get("render_error", "")).strip()
+        validation = validate_mermaid_text(mermaid_code)
+        if artifact_name is None:
+            return jsonify({"ok": False, "message": "Unknown Mermaid artifact."}), 400
+        if not mermaid_code:
+            return jsonify({"ok": False, "message": "Mermaid text is required before AI can fix it."}), 400
+
+        try:
+            fixed_text = _fix_mermaid_with_ai(
+                client,
+                config,
+                task,
+                artifact_name,
+                mermaid_code,
+                validation,
+                render_error,
+            )
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.exception("Mermaid AI fix failed")
+            return jsonify({"ok": False, "message": f"AI Mermaid fix failed: {exc}"}), 500
+
+        if not fixed_text:
+            return jsonify({"ok": False, "message": "The AI backend did not return any Mermaid text."}), 500
+
+        fixed_validation = validate_mermaid_text(fixed_text)
+        return jsonify(
+            {
+                "ok": True,
+                "artifact_name": artifact_name,
+                "mermaid_code": fixed_text,
+                "validation": fixed_validation,
+            }
+        )
 
     @app.post("/tasks/<task_id>/agent")
     def task_agent(task_id: str) -> Any:
@@ -1213,6 +1335,33 @@ def _deterministic_command_centre_summary(
     )
 
 
+def _fix_mermaid_with_ai(
+    client: Any,
+    config: AppConfig,
+    task: dict[str, Any],
+    artifact_name: str,
+    mermaid_code: str,
+    validation: dict[str, Any],
+    render_error: str,
+) -> str:
+    prompt = (
+        "Fix the following Mermaid diagram so it renders correctly.\n"
+        "Return only raw Mermaid code with no markdown fences, explanation, or commentary.\n"
+        "Preserve the user's intent and keep the same diagram type when possible.\n\n"
+        f"Task title: {task.get('title', '')}\n"
+        f"Artifact: {artifact_name}\n"
+        f"Validation warnings: {validation.get('warnings', [])}\n"
+        f"Render error: {render_error or 'None provided'}\n\n"
+        "Current Mermaid:\n"
+        f"{mermaid_code}\n"
+    )
+    return client.generate_text(
+        config.ollama_model,
+        prompt,
+        system="You repair Mermaid syntax. Respond with Mermaid source only.",
+    ).strip().removeprefix("```mermaid").removeprefix("```").removesuffix("```").strip()
+
+
 def _find_task(board: dict[str, Any], task_id: str) -> dict[str, Any] | None:
     return next((item for item in board.get("tasks", []) if item["id"] == task_id), None)
 
@@ -1313,6 +1462,54 @@ def _task_executor_action_details(task: dict[str, Any]) -> list[dict[str, Any]]:
         for action in task.get("executor_actions", [])
         if action
     ]
+
+
+def _task_mermaid_artifact_details(task: dict[str, Any]) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    for artifact_name, artifact_body in task.get("mermaid_artifacts", {}).items():
+        artifact_text = str(artifact_body or "").strip()
+        if not artifact_text:
+            continue
+        details.append(
+            {
+                "name": artifact_name,
+                "label": _humanize_mermaid_artifact_name(artifact_name),
+                "body": artifact_text,
+                "validation": validate_mermaid_text(artifact_text),
+            }
+        )
+    return details
+
+
+def _normalize_task_mermaid_artifact_name(value: str) -> str | None:
+    normalized = str(value or "").strip().lower()
+    valid_names = set(default_mermaid_artifacts().keys())
+    if normalized in valid_names:
+        return normalized
+    return None
+
+
+def _normalize_board_mermaid_artifact_name(value: str) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"kanban", "stitched"}:
+        return normalized
+    return None
+
+
+def _humanize_mermaid_artifact_name(value: str) -> str:
+    return str(value or "").replace("_", " ").strip().title() or "Mermaid"
+
+
+def _mermaid_download_response(mermaid_text: str, *, filename_root: str, export_format: str) -> Any:
+    normalized_format = export_format if export_format in {"mmd", "md"} else "mmd"
+    content = mermaid_text.strip() if normalized_format == "mmd" else mermaid_markdown_block(mermaid_text)
+    mimetype = "text/plain" if normalized_format == "mmd" else "text/markdown"
+    return send_file(
+        BytesIO(content.encode("utf-8")),
+        as_attachment=True,
+        download_name=f"{filename_root}.{normalized_format}",
+        mimetype=mimetype,
+    )
 
 
 def _checklist_to_text(items: list[dict[str, Any]]) -> str:

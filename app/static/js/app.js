@@ -110,44 +110,227 @@ document.querySelectorAll("[data-dropzone]").forEach((zone) => {
 const mermaidModalElement = document.getElementById("mermaidPreviewModal");
 const mermaidModalTitle = document.getElementById("mermaidPreviewModalLabel");
 const mermaidModalDiagram = document.getElementById("mermaidPreviewModalDiagram");
+const mermaidSourceEditor = document.getElementById("mermaidSourceEditor");
+const mermaidSaveForm = document.getElementById("mermaidSaveForm");
+const mermaidSaveInput = document.getElementById("mermaidSaveInput");
+const mermaidCopyButton = document.getElementById("mermaidCopyButton");
+const mermaidDownloadMmdButton = document.getElementById("mermaidDownloadMmdButton");
+const mermaidDownloadMdButton = document.getElementById("mermaidDownloadMdButton");
+const mermaidPreviewRefreshButton = document.getElementById("mermaidPreviewRefreshButton");
+const mermaidValidationMessage = document.getElementById("mermaidValidationMessage");
+const mermaidRenderErrorShell = document.getElementById("mermaidRenderErrorShell");
+const mermaidFixAiButton = document.getElementById("mermaidFixAiButton");
 
-if (mermaidModalElement && mermaidModalTitle && mermaidModalDiagram && window.bootstrap) {
+function validateMermaidText(text) {
+  const trimmed = (text || "").trim();
+  const warnings = [];
+  if (!trimmed) {
+    warnings.push("Mermaid text is empty.");
+    return { ok: false, warnings, diagramType: "", firstLine: "" };
+  }
+
+  const lines = trimmed.split("\n").map((line) => line.trim()).filter(Boolean);
+  const firstLine = lines[0] || "";
+  const validPrefixes = new Set([
+    "flowchart",
+    "graph",
+    "sequenceDiagram",
+    "classDiagram",
+    "stateDiagram",
+    "stateDiagram-v2",
+    "erDiagram",
+    "journey",
+    "gantt",
+    "pie",
+    "mindmap",
+    "timeline",
+    "gitGraph",
+    "kanban",
+    "quadrantChart",
+    "requirementDiagram",
+    "sankey-beta",
+    "xychart-beta",
+    "block-beta",
+    "packet-beta",
+    "architecture-beta",
+  ]);
+  const firstToken = firstLine.split(/\s+/)[0] || "";
+  if (!validPrefixes.has(firstToken)) {
+    warnings.push("The first Mermaid line should start with a diagram type like `flowchart TD`, `kanban`, or `sequenceDiagram`.");
+  }
+  return { ok: warnings.length === 0, warnings, diagramType: firstToken, firstLine };
+}
+
+function syncMermaidValidation(messageNode, text, renderError = "") {
+  if (!messageNode) {
+    return validateMermaidText(text);
+  }
+  const validation = validateMermaidText(text);
+  messageNode.className = "mermaid-validation";
+  if (validation.ok && !renderError) {
+    messageNode.textContent = `Detected ${validation.diagramType || "Mermaid"} diagram.`;
+  } else {
+    const parts = [...validation.warnings];
+    if (renderError) {
+      parts.push(`Render issue: ${renderError}`);
+    }
+    messageNode.textContent = parts.join(" ");
+    messageNode.classList.add("is-warning");
+  }
+  return validation;
+}
+
+if (
+  mermaidModalElement &&
+  mermaidModalTitle &&
+  mermaidModalDiagram &&
+  mermaidSourceEditor &&
+  mermaidCopyButton &&
+  mermaidDownloadMmdButton &&
+  mermaidDownloadMdButton &&
+  mermaidPreviewRefreshButton &&
+  window.bootstrap
+) {
   const mermaidModal = new window.bootstrap.Modal(mermaidModalElement);
   let mermaidModalRenderIndex = 0;
-  let pendingMermaidRenderNode = null;
+  let currentMermaidConfig = {
+    mode: "board",
+    saveUrl: "",
+    aiFixUrl: "",
+    artifactName: "",
+  };
+  let lastRenderError = "";
 
-  mermaidModalElement.addEventListener("shown.bs.modal", async () => {
-    if (!pendingMermaidRenderNode || !window.puxaiMermaid) {
+  async function renderMermaidPreview() {
+    if (!window.puxaiMermaid) {
       return;
     }
-    try {
-      await window.puxaiMermaid.run({
-        nodes: [pendingMermaidRenderNode],
-      });
-    } catch (error) {
-      console.error("Mermaid modal render failed", error);
-    } finally {
-      pendingMermaidRenderNode = null;
+    const body = mermaidSourceEditor.value || "";
+    const validation = syncMermaidValidation(mermaidValidationMessage, body);
+    mermaidModalRenderIndex += 1;
+    const renderId = `mermaid-modal-${mermaidModalRenderIndex}`;
+    mermaidModalDiagram.innerHTML = "";
+    const renderNode = document.createElement("div");
+    renderNode.className = "mermaid";
+    renderNode.id = renderId;
+    renderNode.textContent = body;
+    mermaidModalDiagram.appendChild(renderNode);
+    lastRenderError = "";
+    if (mermaidRenderErrorShell) {
+      mermaidRenderErrorShell.classList.add("d-none");
+      mermaidRenderErrorShell.textContent = "";
     }
-  });
+    try {
+      await window.puxaiMermaid.run({ nodes: [renderNode] });
+      syncMermaidValidation(mermaidValidationMessage, body);
+    } catch (error) {
+      lastRenderError = String(error);
+      syncMermaidValidation(mermaidValidationMessage, body, lastRenderError);
+      if (mermaidRenderErrorShell) {
+        mermaidRenderErrorShell.textContent = lastRenderError;
+        mermaidRenderErrorShell.classList.remove("d-none");
+      }
+    }
+    return validation;
+  }
+
+  function syncMermaidModalMode() {
+    const isTaskMode = currentMermaidConfig.mode === "task";
+    if (mermaidSaveForm) {
+      mermaidSaveForm.hidden = !isTaskMode;
+      mermaidSaveForm.action = currentMermaidConfig.saveUrl || "";
+    }
+    if (mermaidSourceEditor) {
+      mermaidSourceEditor.readOnly = !isTaskMode;
+    }
+    if (mermaidFixAiButton) {
+      mermaidFixAiButton.hidden = !isTaskMode || !currentMermaidConfig.aiFixUrl;
+      mermaidFixAiButton.disabled = !currentMermaidConfig.aiFixUrl;
+    }
+  }
 
   document.querySelectorAll("[data-mermaid-modal-body]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const title = button.dataset.mermaidModalTitle || "Mermaid preview";
-      const body = button.dataset.mermaidModalBody || "";
-      mermaidModalTitle.textContent = title;
-      mermaidModalRenderIndex += 1;
-      const renderId = `mermaid-modal-${mermaidModalRenderIndex}`;
-      mermaidModalDiagram.innerHTML = "";
-      const renderNode = document.createElement("div");
-      renderNode.className = "mermaid";
-      renderNode.id = renderId;
-      renderNode.textContent = body;
-      mermaidModalDiagram.appendChild(renderNode);
-      pendingMermaidRenderNode = renderNode;
+      currentMermaidConfig = {
+        mode: button.dataset.mermaidModalMode || "board",
+        saveUrl: button.dataset.mermaidSaveUrl || "",
+        aiFixUrl: button.dataset.mermaidAiFixUrl || "",
+        artifactName: button.dataset.mermaidArtifactName || "",
+      };
+      mermaidModalTitle.textContent = button.dataset.mermaidModalTitle || "Mermaid preview";
+      mermaidSourceEditor.value = button.dataset.mermaidModalBody || "";
+      mermaidDownloadMmdButton.href = button.dataset.mermaidDownloadMmdUrl || "#";
+      mermaidDownloadMdButton.href = button.dataset.mermaidDownloadMdUrl || "#";
+      syncMermaidModalMode();
       mermaidModal.show();
+      await renderMermaidPreview();
     });
   });
+
+  mermaidPreviewRefreshButton.addEventListener("click", async () => {
+    await renderMermaidPreview();
+  });
+
+  mermaidSourceEditor.addEventListener("input", () => {
+    syncMermaidValidation(mermaidValidationMessage, mermaidSourceEditor.value);
+  });
+
+  mermaidCopyButton.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(mermaidSourceEditor.value || "");
+      mermaidCopyButton.textContent = "Copied";
+      window.setTimeout(() => {
+        mermaidCopyButton.textContent = "Copy Mermaid";
+      }, 1200);
+    } catch (error) {
+      window.alert(`Copy failed: ${error}`);
+    }
+  });
+
+  if (mermaidSaveForm && mermaidSaveInput) {
+    mermaidSaveForm.addEventListener("submit", (event) => {
+      const validation = validateMermaidText(mermaidSourceEditor.value);
+      if (!validation.ok) {
+        event.preventDefault();
+        syncMermaidValidation(mermaidValidationMessage, mermaidSourceEditor.value, lastRenderError);
+        window.alert(validation.warnings.join(" "));
+        return;
+      }
+      mermaidSaveInput.value = mermaidSourceEditor.value;
+    });
+  }
+
+  if (mermaidFixAiButton) {
+    mermaidFixAiButton.addEventListener("click", async () => {
+      if (!currentMermaidConfig.aiFixUrl) {
+        return;
+      }
+      mermaidFixAiButton.disabled = true;
+      mermaidFixAiButton.textContent = "Fixing...";
+      try {
+        const response = await fetch(currentMermaidConfig.aiFixUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            artifact_name: currentMermaidConfig.artifactName,
+            mermaid_code: mermaidSourceEditor.value,
+            render_error: lastRenderError,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.message || "AI Mermaid fix failed.");
+        }
+        mermaidSourceEditor.value = payload.mermaid_code || mermaidSourceEditor.value;
+        await renderMermaidPreview();
+      } catch (error) {
+        window.alert(`AI Mermaid fix failed: ${error}`);
+      } finally {
+        mermaidFixAiButton.disabled = false;
+        mermaidFixAiButton.textContent = "Fix Mermaid with AI";
+      }
+    });
+  }
 }
 
 const sideRailToggle = document.getElementById("sideRailToggle");
