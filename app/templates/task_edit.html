@@ -339,6 +339,9 @@
       </main>
 
       <aside class="task-edit-side">
+        {% set detail_scope = "task" %}
+        {% set detail_id = task.id %}
+        {% include "_detail_ai_panel.html" %}
         <section class="glass-panel p-4 mb-4">
           <div class="section-heading">
             <div>

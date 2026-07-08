@@ -1,0 +1,22 @@
+<section class="chat-panel card shadow-sm mb-4">
+  <div class="card-header">
+    <div class="fw-semibold">Context AI</div>
+    <div class="small text-muted">Ask for refinement, next steps, summaries, risks, or task conversion ideas in this {{ detail_scope }}.</div>
+  </div>
+  <div class="card-body p-0">
+    <div class="chat-history detail-chat-history" data-chat-history>
+      <div class="chat-message assistant">
+        <div class="chat-role">assistant</div>
+        <div class="chat-message-body">I can help with this {{ detail_scope }} specifically. Ask me to rewrite it, summarize it, extract actions, or turn it into structured work.</div>
+      </div>
+    </div>
+    <div class="border-top p-3">
+      <form data-chat-form data-chat-endpoint="{{ url_for('api_context_chat') }}" data-chat-refresh="false">
+        <input type="hidden" name="scope" value="{{ detail_scope }}">
+        <input type="hidden" name="entity_id" value="{{ detail_id }}">
+        <textarea class="form-control mb-2" data-chat-message rows="4" placeholder="Ask PUXAI about this {{ detail_scope }}..."></textarea>
+        <button class="btn btn-primary w-100" type="submit">Send to AI backend</button>
+      </form>
+    </div>
+  </div>
+</section>

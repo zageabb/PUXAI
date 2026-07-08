@@ -1,9 +1,5 @@
-const chatForm = document.getElementById("chat-form");
-const chatHistory = document.getElementById("chat-history");
-const chatMessage = document.getElementById("chat-message");
-
-function appendMessage(role, content) {
-  if (!chatHistory) {
+function appendMessage(chatHistoryNode, role, content) {
+  if (!chatHistoryNode) {
     return;
   }
   const wrapper = document.createElement("div");
@@ -18,39 +14,55 @@ function appendMessage(role, content) {
   body.textContent = content;
 
   wrapper.append(roleNode, body);
-  chatHistory.appendChild(wrapper);
-  chatHistory.scrollTop = chatHistory.scrollHeight;
+  chatHistoryNode.appendChild(wrapper);
+  chatHistoryNode.scrollTop = chatHistoryNode.scrollHeight;
 }
 
-if (chatForm && chatMessage) {
-  chatForm.addEventListener("submit", async (event) => {
+document.querySelectorAll("[data-chat-form]").forEach((chatFormNode) => {
+  const chatHistoryNode = chatFormNode.closest(".chat-panel")?.querySelector("[data-chat-history]");
+  const chatMessageNode = chatFormNode.querySelector("[data-chat-message]");
+  const endpoint = chatFormNode.dataset.chatEndpoint || "/api/chat";
+  const shouldRefresh = chatFormNode.dataset.chatRefresh !== "false";
+  if (!chatMessageNode) {
+    return;
+  }
+
+  chatFormNode.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const message = chatMessage.value.trim();
+    const message = chatMessageNode.value.trim();
     if (!message) {
       return;
     }
 
-    appendMessage("user", message);
-    chatMessage.value = "";
+    appendMessage(chatHistoryNode, "user", message);
+    chatMessageNode.value = "";
+
+    const payloadBody = { message };
+    const scopeField = chatFormNode.querySelector('input[name="scope"]');
+    const entityIdField = chatFormNode.querySelector('input[name="entity_id"]');
+    if (scopeField && entityIdField) {
+      payloadBody.scope = scopeField.value;
+      payloadBody.entity_id = entityIdField.value;
+    }
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(payloadBody),
       });
       const payload = await response.json();
-      appendMessage("assistant", payload.reply || "The assistant returned an empty response.");
-      if (payload.refresh_board) {
+      appendMessage(chatHistoryNode, "assistant", payload.reply || "The assistant returned an empty response.");
+      if (shouldRefresh && payload.refresh_board) {
         window.setTimeout(() => {
           window.location.reload();
         }, 500);
       }
     } catch (error) {
-      appendMessage("assistant", `The assistant request failed: ${error}`);
+      appendMessage(chatHistoryNode, "assistant", `The assistant request failed: ${error}`);
     }
   });
-}
+});
 
 let draggedTaskId = null;
 

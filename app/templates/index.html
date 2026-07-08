@@ -352,7 +352,7 @@
               <article class="capture-card">
                 <div class="capture-card-head">
                   <div>
-                    <strong>{{ note.title }}</strong>
+                    <a class="run-summary text-decoration-none" href="{{ url_for('edit_note', note_id=note.id) }}">{{ note.title }}</a>
                     <div class="small text-muted">{{ note.updated_at[:19].replace('T', ' ') }}</div>
                   </div>
                   <form action="{{ url_for('create_task_from_capture', source_type='note', source_id=note.id) }}" method="post">
@@ -390,7 +390,7 @@
                     <button type="submit" class="check-toggle {% if todo_item.done %}is-done{% endif %}">
                       {% if todo_item.done %}✓{% else %}○{% endif %}
                     </button>
-                    <span class="{% if todo_item.done %}text-decoration-line-through text-muted{% endif %}">{{ todo_item.text }}</span>
+                    <a class="{% if todo_item.done %}text-decoration-line-through text-muted{% endif %}" href="{{ url_for('edit_todo_item', todo_id=todo_item.id) }}">{{ todo_item.text }}</a>
                   </form>
                   <form action="{{ url_for('create_task_from_capture', source_type='todo', source_id=todo_item.id) }}" method="post">
                     <button class="btn btn-sm btn-outline-primary" type="submit">Turn into task</button>
@@ -455,7 +455,7 @@
           <div class="small text-muted">Ask for next steps, product shaping, executor ideas, or Mermaid refinement.</div>
         </div>
         <div class="card-body p-0">
-          <div class="chat-history" id="chat-history">
+          <div class="chat-history" id="chat-history" data-chat-history>
             {% for message in board.chat_history %}
               <div class="chat-message {{ message.role }}">
                 <div class="chat-role">{{ message.role }}</div>
@@ -469,8 +469,8 @@
             {% endfor %}
           </div>
           <div class="border-top p-3">
-            <form id="chat-form">
-              <textarea class="form-control mb-2" id="chat-message" rows="4" placeholder="Ask PUXAI what to build next or which executor action to run."></textarea>
+            <form id="chat-form" data-chat-form data-chat-endpoint="{{ url_for('api_chat') }}" data-chat-refresh="true">
+              <textarea class="form-control mb-2" id="chat-message" data-chat-message rows="4" placeholder="Ask PUXAI what to build next or which executor action to run."></textarea>
               <button class="btn btn-primary w-100" type="submit">Send to AI backend</button>
             </form>
           </div>

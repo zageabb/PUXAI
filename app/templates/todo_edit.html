@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Todo{% endblock %}
+
+{% block content %}
+  <div class="task-edit-shell">
+    <div class="task-edit-header glass-panel p-4 mb-4">
+      <div>
+        <div class="section-kicker">Todo Workspace</div>
+        <h1 class="display-title task-edit-title">{{ todo_item.text }}</h1>
+        <p class="hero-copy task-edit-copy">Refine a quick inbox item with AI, then keep it lightweight or promote it into a full task when it is ready.</p>
+      </div>
+      <div class="task-edit-actions">
+        <a class="btn btn-outline-dark" href="{{ url_for('index') }}">Back to board</a>
+        <form action="{{ url_for('create_task_from_capture', source_type='todo', source_id=todo_item.id) }}" method="post">
+          <button class="btn btn-outline-secondary" type="submit">Turn into task</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="task-edit-grid">
+      <main class="task-edit-main">
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Editable Todo</div>
+              <h2>Inbox item details</h2>
+            </div>
+          </div>
+          <form action="{{ url_for('save_todo_item_edit', todo_id=todo_item.id) }}" method="post" class="stack-form">
+            <div>
+              <label class="form-label">Todo text</label>
+              <textarea class="form-control" name="text" rows="6">{{ todo_item.text }}</textarea>
+            </div>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="done" value="1" {% if todo_item.done %}checked{% endif %}>
+              <span class="form-check-label">Mark as completed</span>
+            </label>
+            <button class="btn btn-primary" type="submit">Save todo</button>
+          </form>
+        </section>
+      </main>
+
+      <aside class="task-edit-side">
+        {% set detail_scope = "todo" %}
+        {% set detail_id = todo_item.id %}
+        {% include "_detail_ai_panel.html" %}
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Todo Metadata</div>
+              <h2>Status and timing</h2>
+            </div>
+          </div>
+          <div class="status-stack">
+            <div class="status-row"><span>Status</span><code>{{ "Done" if todo_item.done else "Open" }}</code></div>
+            <div class="status-row"><span>Created</span><code>{{ todo_item.created_at[:19].replace('T', ' ') }}</code></div>
+            <div class="status-row"><span>Updated</span><code>{{ todo_item.updated_at[:19].replace('T', ' ') }}</code></div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+{% endblock %}

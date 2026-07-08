@@ -256,6 +256,24 @@ class BoardStore:
         board["todo_items"] = board["todo_items"][:100]
         return self.save(board)
 
+    def update_note(self, note_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+        board = self.load()
+        for note in board.get("notes", []):
+            if note["id"] == note_id:
+                note.update(patch)
+                note["updated_at"] = utc_now()
+                break
+        return self.save(board)
+
+    def update_todo_item(self, todo_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+        board = self.load()
+        for todo_item in board.get("todo_items", []):
+            if todo_item["id"] == todo_id:
+                todo_item.update(patch)
+                todo_item["updated_at"] = utc_now()
+                break
+        return self.save(board)
+
     def update_task(self, task_id: str, patch: dict[str, Any]) -> dict[str, Any]:
         board = self.load()
         for task in board["tasks"]:

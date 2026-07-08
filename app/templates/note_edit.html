@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ note.title }}{% endblock %}
+
+{% block content %}
+  <div class="task-edit-shell">
+    <div class="task-edit-header glass-panel p-4 mb-4">
+      <div>
+        <div class="section-kicker">Note Workspace</div>
+        <h1 class="display-title task-edit-title">{{ note.title }}</h1>
+        <p class="hero-copy task-edit-copy">Markdown capture with contextual AI support for refinement, action extraction, and task conversion.</p>
+      </div>
+      <div class="task-edit-actions">
+        <a class="btn btn-outline-dark" href="{{ url_for('index') }}">Back to board</a>
+        <form action="{{ url_for('create_task_from_capture', source_type='note', source_id=note.id) }}" method="post">
+          <button class="btn btn-outline-secondary" type="submit">Turn into task</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="task-edit-grid">
+      <main class="task-edit-main">
+        <section class="glass-panel p-4 mb-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Editable Note</div>
+              <h2>Markdown body and title</h2>
+            </div>
+          </div>
+          <form action="{{ url_for('save_note_edit', note_id=note.id) }}" method="post" class="stack-form">
+            <div>
+              <label class="form-label">Title</label>
+              <input class="form-control" type="text" name="title" value="{{ note.title }}">
+            </div>
+            <div>
+              <label class="form-label">Markdown body</label>
+              <textarea class="form-control mermaid-editor" name="body" rows="18">{{ note.body }}</textarea>
+            </div>
+            <button class="btn btn-primary" type="submit">Save note</button>
+          </form>
+        </section>
+
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Preview</div>
+              <h2>Rendered markdown</h2>
+            </div>
+            <div class="section-note">Updated {{ note.updated_at[:19].replace('T', ' ') }}</div>
+          </div>
+          <div class="markdown-preview">{{ render_markdown(note.body) }}</div>
+        </section>
+      </main>
+
+      <aside class="task-edit-side">
+        {% set detail_scope = "note" %}
+        {% set detail_id = note.id %}
+        {% include "_detail_ai_panel.html" %}
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Capture Metadata</div>
+              <h2>Note details</h2>
+            </div>
+          </div>
+          <div class="status-stack">
+            <div class="status-row"><span>Created</span><code>{{ note.created_at[:19].replace('T', ' ') }}</code></div>
+            <div class="status-row"><span>Updated</span><code>{{ note.updated_at[:19].replace('T', ' ') }}</code></div>
+            <div class="status-row"><span>Length</span><code>{{ note.body|length }} chars</code></div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+{% endblock %}

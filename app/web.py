@@ -193,6 +193,22 @@ def create_app(
             default_status=board["statuses"][0] if board["statuses"] else "Backlog",
         )
 
+    @app.get("/notes/<note_id>/edit")
+    def edit_note(note_id: str) -> Any:
+        board = _board_store(app).load()
+        note = _find_note(board, note_id)
+        if note is None:
+            abort(404)
+        return render_template("note_edit.html", board=board, note=note)
+
+    @app.get("/todos/<todo_id>/edit")
+    def edit_todo_item(todo_id: str) -> Any:
+        board = _board_store(app).load()
+        todo_item = _find_todo_item(board, todo_id)
+        if todo_item is None:
+            abort(404)
+        return render_template("todo_edit.html", board=board, todo_item=todo_item)
+
     @app.get("/tasks/<task_id>/edit")
     def edit_task(task_id: str) -> Any:
         board = _board_store(app).load()
@@ -277,6 +293,30 @@ def create_app(
         flash(f"Saved note '{title}'.", "success")
         return redirect(url_for("index"))
 
+    @app.post("/notes/<note_id>/edit")
+    def save_note_edit(note_id: str) -> Any:
+        board = _board_store(app).load()
+        note = _find_note(board, note_id)
+        if note is None:
+            flash("Note not found.", "warning")
+            return redirect(url_for("index"))
+        title = request.form.get("title", note["title"]).strip() or note["title"]
+        body = request.form.get("body", note.get("body", "")).strip()
+        if not body:
+            flash("A markdown note body is required.", "warning")
+            return redirect(url_for("edit_note", note_id=note_id))
+        _board_store(app).update_note(note_id, {"title": title, "body": body})
+        _append_activity_event(
+            app,
+            scope="board",
+            kind="note.edited",
+            title="Note updated",
+            summary=f"Updated note '{title}'.",
+            payload={"note_id": note_id},
+        )
+        flash(f"Updated note '{title}'.", "success")
+        return redirect(url_for("edit_note", note_id=note_id))
+
     @app.post("/todos")
     def create_todo_item() -> Any:
         text = request.form.get("text", "").strip()
@@ -302,6 +342,30 @@ def create_app(
         )
         flash("Added todo item.", "success")
         return redirect(url_for("index"))
+
+    @app.post("/todos/<todo_id>/edit")
+    def save_todo_item_edit(todo_id: str) -> Any:
+        board = _board_store(app).load()
+        todo_item = _find_todo_item(board, todo_id)
+        if todo_item is None:
+            flash("Todo item not found.", "warning")
+            return redirect(url_for("index"))
+        text = request.form.get("text", todo_item["text"]).strip()
+        if not text:
+            flash("A todo item needs some text.", "warning")
+            return redirect(url_for("edit_todo_item", todo_id=todo_id))
+        done = request.form.get("done") == "1"
+        _board_store(app).update_todo_item(todo_id, {"text": text, "done": done})
+        _append_activity_event(
+            app,
+            scope="board",
+            kind="todo.edited",
+            title="Todo updated",
+            summary=f"Updated todo '{text}'.",
+            payload={"todo_id": todo_id, "done": done},
+        )
+        flash("Updated todo item.", "success")
+        return redirect(url_for("edit_todo_item", todo_id=todo_id))
 
     @app.post("/todos/<todo_id>/toggle")
     def toggle_todo_item(todo_id: str) -> Any:
@@ -1008,6 +1072,34 @@ def create_app(
             }
         )
 
+    @app.post("/api/context-chat")
+    def api_context_chat() -> Any:
+        payload = request.get_json(force=True)
+        message = (payload.get("message") or "").strip()
+        scope = str(payload.get("scope", "")).strip().lower()
+        entity_id = str(payload.get("entity_id", "")).strip()
+        if not message:
+            return jsonify({"ok": False, "message": "Message is required."}), 400
+        board = _board_store(app).load()
+        context_payload = _detail_context_payload(board, scope, entity_id)
+        if context_payload is None:
+            return jsonify({"ok": False, "message": "Detail context was not found."}), 404
+
+        client = _ai_backend(config)
+        if not client or not client.is_available():
+            reply = (
+                "The configured AI backend is not reachable right now. "
+                "Check `config.ini` and start the backend, then try again."
+            )
+        else:
+            try:
+                enriched_message = _build_detail_chat_message(context_payload, message)
+                reply = board_chat_reply(client, config.ollama_model, board, enriched_message)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.exception("Context chat request failed")
+                reply = f"The assistant hit an error while contacting the AI backend: {exc}"
+        return jsonify({"ok": True, "reply": reply, "refresh_board": False})
+
     @app.get("/api/ai/status")
     def api_ai_status() -> Any:
         return jsonify(_ai_status(config))
@@ -1497,6 +1589,58 @@ def _resolve_todo_item(board: dict[str, Any], args: dict[str, Any]) -> dict[str,
             return todo_item
     todo_text = str(args.get("todo_text", "")).strip() or str(args.get("text", "")).strip()
     return _match_by_text(board.get("todo_items", []), "text", todo_text)
+
+
+def _detail_context_payload(
+    board: dict[str, Any],
+    scope: str,
+    entity_id: str,
+) -> dict[str, Any] | None:
+    if scope == "task":
+        task = _find_task(board, entity_id)
+        if task is None:
+            return None
+        return {
+            "scope": "task",
+            "title": task.get("title", "Untitled task"),
+            "summary": task.get("summary", ""),
+            "payload": task,
+        }
+    if scope == "note":
+        note = _find_note(board, entity_id)
+        if note is None:
+            return None
+        return {
+            "scope": "note",
+            "title": note.get("title", "Untitled note"),
+            "summary": note.get("body", ""),
+            "payload": note,
+        }
+    if scope == "todo":
+        todo_item = _find_todo_item(board, entity_id)
+        if todo_item is None:
+            return None
+        return {
+            "scope": "todo",
+            "title": todo_item.get("text", "Untitled todo"),
+            "summary": f"Done: {todo_item.get('done', False)}",
+            "payload": todo_item,
+        }
+    return None
+
+
+def _build_detail_chat_message(context_payload: dict[str, Any], message: str) -> str:
+    scope = context_payload["scope"]
+    title = context_payload["title"]
+    summary = context_payload["summary"]
+    payload_preview = context_payload["payload"]
+    return (
+        f"Detail page scope: {scope}\n"
+        f"Detail title: {title}\n"
+        f"Detail summary: {summary}\n"
+        f"Detail payload: {payload_preview}\n\n"
+        f"User message: {message}"
+    )
 
 
 def _task_files_dir(app: Flask, task_id: str) -> Path:
