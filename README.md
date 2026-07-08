@@ -1,51 +1,111 @@
 # PUXAI
 
-PUXAI is a local-first, agentic workspace for turning work into visible, editable, executable tasks.
+Personal UX and AI — a local-first AI command centre where each workspace combines tasks, notes, repositories, documents, diagrams, app launchers, and AI agents.
 
-It combines a Flask web app, an Ollama-backed assistant, a live kanban board, Mermaid-based visual planning, local app launching, task-scoped repository context, markdown notes, todo capture, and safe local executor actions.
+PUXAI is a practical local workspace built around a Flask web app, an Ollama-backed assistant, a kanban board, Markdown capture, Mermaid diagrams, and safe task-level actions. It is intended to feel more like an AI operating surface than a chat box with a few forms around it.
 
-## What PUXAI Does
+## What PUXAI Is
 
-- Runs as a local web app by default at `http://127.0.0.1:8787/`
-- Uses Ollama for task drafting, task-agent runs, and board chat
-- Organizes work on a kanban board with editable task workspaces
-- Stores Mermaid artifacts per task and at board level
-- Captures markdown notes and todo items that AI can see and convert into tasks
-- Lets tasks carry attachments, repo context, document summaries, and email drafts
-- Launches local apps on Windows, macOS, and Linux through a shared launcher registry
-- Supports safe executor actions such as repo scans, diff summaries, Mermaid regeneration, and lightweight document parsing
+PUXAI is currently a local-first product workspace with:
 
-## Current Shape Of The Product
+- a browser-based Flask interface
+- a kanban board for active work
+- editable task workspaces
+- Markdown notes and todo capture
+- Mermaid diagrams attached to tasks and the board
+- Ollama-backed AI chat and task agents
+- repository context ingestion for grounded task work
+- safe local executor actions
+- cross-platform app launchers
 
-PUXAI is not a generic chatbot wrapped in a dashboard. It is closer to a local AI operating surface:
+The core idea is simple: keep context, planning, and action in one place, and let AI help with the work without pretending everything is fully autonomous yet.
 
-- The board is the primary planning layer
-- Each task has its own workspace
-- AI can both advise and perform approved in-app actions
-- Mermaid is treated as part of the work, not as an afterthought
-- Local tools and local data remain first-class
+## Current Features
 
-## Requirements
+### Flask web workspace
 
-- Python 3.10+
+- Starts locally from `python main.py`
+- Runs as a Flask app, by default on `http://127.0.0.1:8787/`
+- Stores local board state and task context on disk
+
+### Kanban task board
+
+- Status-based board with default columns such as `Backlog`, `Ready`, `In Progress`, `Blocked`, `Review`, and `Done`
+- Drag-and-drop and form-based task movement
+- Dedicated task edit workspace for deeper task context
+
+### Markdown notes
+
+- Capture notes as Markdown
+- Notes are visible to the AI context
+- Notes can be turned into tasks
+
+### Todo capture
+
+- Quick lightweight inbox for smaller work items
+- Todo items can later be promoted into tasks
+- AI can reference todo content when drafting or planning
+
+### Mermaid diagrams
+
+- Task-level Mermaid artifacts such as architecture, flow, kanban subview, sequence, and mindmap
+- Board-level Mermaid views for kanban and stitched board context
+- Preview support in the UI
+
+### Ollama-backed AI chat and agents
+
+- Board chat using Ollama
+- AI task enrichment during task creation
+- Task agent runs that can suggest updates, checklist items, Mermaid artifacts, and next steps
+- Chat action layer for supported actions like creating tasks, notes, todos, drafts, and task updates
+
+### Repository context ingestion
+
+- Attach a repository path to a task
+- Index files and apply focus patterns
+- Detect git root where available
+- Pull recent commits and git status
+- Generate lightweight summaries for selected files
+
+### Safe executor actions
+
+Current implemented executor actions:
+
+- `repo_scan`
+- `diff_summary`
+- `generate_mermaid`
+- `document_parse`
+
+These actions are intentionally constrained and task-scoped.
+
+### Cross-platform app launchers
+
+- Shared launcher registry in `app/launchers/apps_registry.json`
+- Platform-specific launch logic for Windows, macOS, and Linux
+- Includes Office-oriented launcher entries such as Word, Excel, and PowerPoint
+
+## How To Install
+
+Requirements:
+
+- Python 3.10 or newer
 - `pip`
-- Ollama running locally or on a reachable LAN host
-- A pulled model for chat and agent runs
+- Ollama available locally or on your network
 
-Optional:
+Optional but useful:
 
+- Git for repository context and diff summaries
 - Microsoft Office or LibreOffice for launcher workflows
-- Git for repo context and diff summaries
 
-## Installation
+macOS and Linux:
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-On Windows:
+Windows:
 
 ```bash
 python -m venv .venv
@@ -53,20 +113,39 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Configuration
+## How To Run
 
-PUXAI reads from [`config.ini`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/config.ini).
+From the repository root:
 
-Important settings:
+```bash
+python main.py
+```
 
-- `window_mode = web` keeps the app in Flask/web mode
-- `[web] host` and `port` control the local server address
-- `[ollama] url` points to your Ollama server
-- `[ollama] model` is the default assistant model
-- `[ollama] agent_model` is used for structured agent runs
-- `auto_open_browser = true` opens the browser shortly after launch
+This launches the Flask app and, if configured, opens the browser automatically.
 
-Example launch-focused configuration:
+Default local address:
+
+- `http://127.0.0.1:8787/`
+
+If `python` is not available in your shell path, use:
+
+```bash
+python3 main.py
+```
+
+## Configuration Using `config.ini`
+
+PUXAI reads its runtime configuration from `config.ini`.
+
+Important sections:
+
+- `[general]` app name, data directory, and default workspace
+- `[features]` high-level feature flags and `window_mode`
+- `[web]` host, port, debug, and browser launch behavior
+- `[ollama]` Ollama URL, default model, agent model, and timeout
+- `[outlook]` Outlook-related settings currently stored in config, though this is not yet a full Outlook automation surface
+
+Current examples from the repo:
 
 ```ini
 [features]
@@ -83,135 +162,83 @@ auto_open_browser = true
 url = http://127.0.0.1:11434
 model = llama3.2
 agent_model = llama3.2
+request_timeout_seconds = 360
 ```
 
-## Running The App
+The checked-in `config.ini` may point at a LAN-hosted Ollama instance. If you are running Ollama on the same machine, update the URL accordingly.
 
-Start the application from the repository root:
+## Ollama Setup
+
+PUXAI currently relies on Ollama for local AI chat and agent flows.
+
+Typical local setup:
+
+1. Install Ollama.
+2. Start the Ollama server.
+3. Pull a model such as `llama3.2`.
+4. Update `config.ini` if needed.
+
+Example:
 
 ```bash
-python main.py
+ollama pull llama3.2
+ollama serve
 ```
 
-If everything is configured correctly, PUXAI starts a Flask server and opens:
+Then set:
 
-- `http://127.0.0.1:8787/`
+```ini
+[ollama]
+url = http://127.0.0.1:11434
+model = llama3.2
+agent_model = llama3.2
+```
 
-## Main Workflows
+If Ollama is offline or unreachable, the web app will still load, but AI chat and agent features will not function.
 
-### 1. Create Work
+## Current Limitations
 
-- Click `New task`
-- Enter title, summary, status, owner, labels, and priority
-- Leave AI enrichment on if you want Ollama to draft checklist items, task hints, and Mermaid seeds
+PUXAI is already useful, but there are important limits today:
 
-### 2. Edit A Task Workspace
+- It is still a local-first single-user style workspace rather than a multi-user collaborative platform.
+- Executor actions are intentionally narrow and do not provide unrestricted automation.
+- Email generation currently creates task-scoped draft content inside the app; it does not send mail directly.
+- Repository ingestion is lightweight and focused on selected files rather than full semantic code understanding.
+- Some configuration sections exist ahead of deeper implementation, especially around Outlook and broader integrations.
+- The product aims to be agentic, but not every assistant request can yet be executed as a real action.
 
-Each task has a dedicated workspace where you can:
+## Suggested Roadmap
 
-- edit title, summary, notes, labels, owner, priority, and status
-- manage checklist items
-- author Mermaid artifacts such as architecture, flow, kanban subview, sequence, and mindmap
-- attach files
-- ingest repository context
-- generate email drafts
-- run safe executor actions
-- delete the task
-- download a task `Work Brief`
+Future work, not all implemented today:
 
-### 3. Use Capture As Input
+- richer approved agent actions beyond the current safe executor set
+- deeper repository understanding and context-lab style ingestion
+- stronger document workflows across briefs, notes, attachments, and extracted knowledge
+- better task-to-agent orchestration with more reliable action planning
+- more visual board interactions and richer Mermaid-linked task views
+- clearer delivery surfaces for generated outputs such as drafts, artifacts, and agent results
+- tighter launcher and desktop integration across Windows, macOS, and Linux
 
-- Save markdown notes
-- Add todo items
-- Convert either into tasks
-- Let the AI use that captured material as context
+## Developer Notes
 
-### 4. Use The Assistant As An Action Layer
+Main entry points and useful files:
 
-The board chat can currently take direct action for supported requests, including:
+- `main.py` — top-level launcher
+- `app/main.py` — runtime bootstrap
+- `app/web.py` — Flask routes and most application behavior
+- `app/services/agent_service.py` — Ollama prompts, chat planning, and task agent logic
+- `app/services/executor_service.py` — safe local executor actions
+- `app/services/repo_context_service.py` — repository ingestion and document summaries
+- `app/services/board_store.py` — board persistence and normalization
+- `app/launchers/` — cross-platform app launching
 
-- create note
-- create todo
-- create task
-- create task from note
-- create task from todo
-- create email draft
-- update task
-- move task
-- run executor action
+Other notes:
 
-If a request falls outside the approved action layer, the assistant will respond conversationally instead of executing.
+- State is stored locally under `app/data/`
+- The board currently persists to `app/data/board.json`
+- Task attachments are stored under the configured data directory
+- Documentation files in the repo include `MANUAL.md` and `DESIGN_PHILOSOPHY.md`
 
-## Safe Executor Actions
+## Honest Status
 
-Current executor actions:
-
-- `repo_scan`
-- `diff_summary`
-- `generate_mermaid`
-- `document_parse`
-
-These are intentionally constrained. They are meant to make the system more agentic without turning it into an unrestricted local automation shell.
-
-## Repository Context
-
-Tasks can ingest repo context from a local path. PUXAI will:
-
-- resolve the directory
-- index files
-- filter by focus patterns
-- detect git root when available
-- collect git status and recent commits
-- generate lightweight summaries for selected text-like files
-
-This gives the agent more grounded context before acting.
-
-## Local App Launching
-
-PUXAI includes a cross-platform launcher registry in [`app/launchers/apps_registry.json`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/launchers/apps_registry.json).
-
-Current launcher support includes platform-aware commands for apps such as:
-
-- Microsoft Word
-- Microsoft Excel
-- Microsoft PowerPoint
-- Outlook and other Office-adjacent entries
-
-Launch behavior is implemented per platform in:
-
-- [`app/launchers/windows_launcher.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/launchers/windows_launcher.py)
-- [`app/launchers/macos_launcher.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/launchers/macos_launcher.py)
-- [`app/launchers/linux_launcher.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/launchers/linux_launcher.py)
-
-## Data Storage
-
-Board state is stored locally under the configured data directory, by default:
-
-- `app/data/board.json`
-
-Task attachments are stored under the app data area as task-scoped files.
-
-## Key Files
-
-- [`main.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/main.py): top-level launcher
-- [`app/main.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/main.py): runtime entry logic
-- [`app/web.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/web.py): Flask routes and application behavior
-- [`app/services/agent_service.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/services/agent_service.py): AI drafting, chat, and action planning
-- [`app/services/executor_service.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/services/executor_service.py): safe local executor actions
-- [`app/services/repo_context_service.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/services/repo_context_service.py): repository ingestion
-- [`app/services/board_store.py`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/app/services/board_store.py): local board persistence
-
-## Documentation
-
-- [`MANUAL.md`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/MANUAL.md)
-- [`DESIGN_PHILOSOPHY.md`](/Users/geraldabbot/Documents/Codex/2026-07-06/li/PUXAI/DESIGN_PHILOSOPHY.md)
-
-## Near-Term Direction
-
-Strong next moves for PUXAI include:
-
-- richer agent execution with more approved local actions
-- tighter repo-aware task grounding before agent runs
-- multi-artifact Mermaid views per task
-- board interactions that behave more like a live operating console than a CRUD dashboard
-
+PUXAI already supports a meaningful local workflow around tasks, notes, Mermaid, repo context, and Ollama-backed assistance. It is not yet a fully autonomous agent platform, and the README should be read with that in mind. Where something sounds more ambitious than the current code, it belongs in the roadmap rather than the feature list.
