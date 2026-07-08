@@ -12,7 +12,7 @@
       </div>
       <div class="task-edit-actions">
         <a class="btn btn-outline-dark" href="{{ url_for('index') }}">Back to board</a>
-        <a class="btn btn-outline-secondary" href="{{ url_for('download_rfq_brief', task_id=task.id) }}">Download RFQ brief</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('download_work_brief', task_id=task.id) }}">Download Work Brief</a>
         <form action="{{ url_for('delete_task', task_id=task.id) }}" method="post" onsubmit="return confirm('Delete this task and its attached files?');">
           <button class="btn btn-outline-danger" type="submit">Delete task</button>
         </form>
@@ -178,7 +178,7 @@
           <div class="section-heading">
             <div>
               <div class="section-kicker">Email Actions</div>
-              <h2>Drafts and RFQ flows</h2>
+              <h2>Drafts and Work Brief flows</h2>
             </div>
           </div>
           <form action="{{ url_for('create_email_draft', task_id=task.id) }}" method="post" class="stack-form">
@@ -189,7 +189,7 @@
             <div>
               <label class="form-label">Draft type</label>
               <select class="form-select" name="draft_type">
-                <option value="rfq">RFQ</option>
+                <option value="work_brief">Work Brief</option>
                 <option value="status">Status update</option>
               </select>
             </div>

@@ -384,26 +384,26 @@ def create_app(
         if task is None:
             flash("Task not found.", "warning")
             return redirect(url_for("index"))
-        draft_type = request.form.get("draft_type", "rfq").strip() or "rfq"
+        draft_type = request.form.get("draft_type", "work_brief").strip() or "work_brief"
         recipient = request.form.get("recipient", "").strip()
         draft = _create_email_draft_record(task, draft_type, recipient)
         drafts = list(task.get("email_drafts", []))
         drafts.insert(0, draft)
         _board_store(app).update_task(task_id, {"email_drafts": drafts[:10]})
-        flash(f"Created {draft_type.upper()} email draft for '{task['title']}'.", "success")
+        flash(f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'.", "success")
         return redirect(url_for("edit_task", task_id=task_id))
 
-    @app.get("/tasks/<task_id>/rfq-download")
-    def download_rfq_brief(task_id: str) -> Any:
+    @app.get("/tasks/<task_id>/work-brief-download")
+    def download_work_brief(task_id: str) -> Any:
         board = _board_store(app).load()
         task = _find_task(board, task_id)
         if task is None:
             abort(404)
-        content = _build_rfq_markdown(task)
+        content = _build_work_brief_markdown(task)
         return send_file(
             BytesIO(content.encode("utf-8")),
             as_attachment=True,
-            download_name=f"{secure_filename(task['title']) or 'task'}-rfq.md",
+            download_name=f"{secure_filename(task['title']) or 'task'}-work-brief.md",
             mimetype="text/markdown",
         )
 
@@ -728,20 +728,22 @@ def _parse_checklist_text(raw_text: str) -> list[dict[str, Any]]:
 
 
 def _draft_subject(task: dict[str, Any], draft_type: str) -> str:
-    if draft_type == "rfq":
-        return f"RFQ: {task['title']}"
+    normalized = _normalize_draft_type(draft_type)
+    if normalized == "work_brief":
+        return f"Work Brief: {task['title']}"
     if draft_type == "status":
         return f"Status update: {task['title']}"
     return f"PUXAI task: {task['title']}"
 
 
 def _draft_body(task: dict[str, Any], draft_type: str) -> str:
+    normalized = _normalize_draft_type(draft_type)
     selected_files = task.get("repo_context", {}).get("selected_files", [])[:5]
     file_list = "\n".join(f"- {path}" for path in selected_files) or "- No files linked yet"
     checklist_text = "\n".join(
         f"- {item['text']}" for item in task.get("checklist", []) if item.get("text")
     ) or "- No checklist items yet"
-    if draft_type == "status":
+    if normalized == "status":
         return (
             f"Task: {task['title']}\n\n"
             f"Summary:\n{task.get('summary', '')}\n\n"
@@ -763,17 +765,18 @@ def _draft_body(task: dict[str, Any], draft_type: str) -> str:
 
 
 def _create_email_draft_record(task: dict[str, Any], draft_type: str, recipient: str) -> dict[str, Any]:
+    normalized = _normalize_draft_type(draft_type)
     return {
         "id": new_id(),
-        "type": draft_type,
+        "type": normalized,
         "recipient": recipient,
-        "subject": _draft_subject(task, draft_type),
-        "body": _draft_body(task, draft_type),
+        "subject": _draft_subject(task, normalized),
+        "body": _draft_body(task, normalized),
         "created_at": utc_now(),
     }
 
 
-def _build_rfq_markdown(task: dict[str, Any]) -> str:
+def _build_work_brief_markdown(task: dict[str, Any]) -> str:
     artifacts = task.get("mermaid_artifacts", {})
     attachments = task.get("attachments", [])
     files = "\n".join(f"- {item['filename']}" for item in attachments) or "- No attachments"
@@ -781,7 +784,7 @@ def _build_rfq_markdown(task: dict[str, Any]) -> str:
         f"- [{'x' if item.get('done') else ' '}] {item.get('text', '')}" for item in task.get("checklist", [])
     ) or "- No checklist items"
     return (
-        f"# RFQ Brief: {task['title']}\n\n"
+        f"# Work Brief: {task['title']}\n\n"
         f"## Summary\n{task.get('summary', '')}\n\n"
         f"## Status\n- Status: {task.get('status', '')}\n- Priority: {task.get('priority', '')}\n- Owner: {task.get('owner', '')}\n\n"
         f"## Notes\n{task.get('notes', '') or 'No notes'}\n\n"
@@ -789,6 +792,26 @@ def _build_rfq_markdown(task: dict[str, Any]) -> str:
         f"## Attachments\n{files}\n\n"
         f"## Mermaid Flow\n```mermaid\n{artifacts.get('flow', '')}\n```\n"
     )
+
+
+def _normalize_draft_type(draft_type: str) -> str:
+    normalized = str(draft_type).strip().lower()
+    if normalized == "rfq":
+        return "work_brief"
+    if normalized == "status":
+        return "status"
+    if normalized == "work brief":
+        return "work_brief"
+    return normalized or "work_brief"
+
+
+def _draft_type_label(draft_type: str) -> str:
+    normalized = _normalize_draft_type(draft_type)
+    if normalized == "work_brief":
+        return "Work Brief"
+    if normalized == "status":
+        return "Status Update"
+    return normalized.replace("_", " ").title()
 
 
 def _move_task_to_status(app: Flask, task_id: str, status: str) -> None:
@@ -959,7 +982,7 @@ def _execute_chat_action(
         drafts = list(task.get("email_drafts", []))
         drafts.insert(0, draft)
         _board_store(app).update_task(task["id"], {"email_drafts": drafts[:10]})
-        return {"summary": f"Created {draft_type.upper()} draft for '{task['title']}'.", "task_id": task["id"]}
+        return {"summary": f"Created {_draft_type_label(draft_type)} draft for '{task['title']}'.", "task_id": task["id"]}
 
     if name == "update_task":
         task_id = str(args.get("task_id", "")).strip()
