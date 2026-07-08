@@ -13,7 +13,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from markupsafe import Markup, escape
 from werkzeug.utils import secure_filename
 
-from app.config import AppConfig
+from app.config import AppConfig, load_config, save_config
 from app.launchers import BaseLauncher
 from app.session_history import append_launch_event
 from app.services.agent_service import (
@@ -58,6 +58,7 @@ def create_app(
     )
     app.config["SECRET_KEY"] = "puxai-local-secret"
     app.config["APP_CONFIG"] = config
+    app.config["CONFIG_PATH"] = "config.ini"
     app.config["OS_NAME"] = os_name
     app.config["LAUNCHER"] = launcher
     app.config["HISTORY_FILE"] = history_file
@@ -95,6 +96,38 @@ def create_app(
             tasks_by_status=_tasks_by_status(board),
             os_name=os_name,
         )
+
+    @app.get("/settings")
+    def settings() -> str:
+        settings_config = load_config(app.config["CONFIG_PATH"])
+        return render_template(
+            "settings.html",
+            settings_config=settings_config,
+            settings_ai_status=_ai_status(settings_config),
+            ai_backend_options=["ollama", "dummy", "openai", "azure_openai", "copilot"],
+            restart_required=True,
+        )
+
+    @app.post("/settings")
+    def save_settings() -> Any:
+        config_path = app.config["CONFIG_PATH"]
+        current = load_config(config_path)
+        try:
+            updated = _build_settings_config_from_form(request, current)
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            preview_config = _settings_preview_config(request.form, current)
+            return render_template(
+                "settings.html",
+                settings_config=preview_config,
+                settings_ai_status=_ai_status(preview_config),
+                ai_backend_options=["ollama", "dummy", "openai", "azure_openai", "copilot"],
+                restart_required=True,
+            )
+
+        save_config(updated, config_path)
+        flash("Settings saved to config.ini. Restart the app to apply all changes.", "success")
+        return redirect(url_for("settings"))
 
     @app.post("/workspaces")
     def create_workspace() -> Any:
@@ -653,6 +686,146 @@ def _ai_status(config: AppConfig) -> dict[str, Any]:
         return status
     except Exception:  # noqa: BLE001
         return status
+
+
+def _settings_checkbox(form: Any, name: str, current_value: bool) -> bool:
+    if name in form:
+        return form.get(name) == "1"
+    return current_value
+
+
+def _settings_preview_config(form: Any, current: AppConfig) -> AppConfig:
+    return AppConfig(
+        app_name=str(form.get("app_name", current.app_name)).strip() or current.app_name,
+        data_dir=str(form.get("data_dir", current.data_dir)).strip() or current.data_dir,
+        default_workspace=str(form.get("default_workspace", current.default_workspace)).strip() or current.default_workspace,
+        workspace_default_id=current.workspace_default_id,
+        enable_ai=_settings_checkbox(form, "enable_ai", current.enable_ai),
+        ai_backend=str(form.get("ai_backend", current.ai_backend)).strip() or current.ai_backend,
+        enable_tasks=_settings_checkbox(form, "enable_tasks", current.enable_tasks),
+        enable_notes=_settings_checkbox(form, "enable_notes", current.enable_notes),
+        enable_outlook=_settings_checkbox(form, "enable_outlook", current.enable_outlook),
+        enable_history_panel=_settings_checkbox(form, "enable_history_panel", current.enable_history_panel),
+        enable_tray_icon=_settings_checkbox(form, "enable_tray_icon", current.enable_tray_icon),
+        window_mode=current.window_mode,
+        transparent_background=current.transparent_background,
+        web_host=str(form.get("web_host", current.web_host)).strip() or current.web_host,
+        web_port=_parse_int_or_default(form.get("web_port", current.web_port), current.web_port),
+        web_debug=current.web_debug,
+        auto_open_browser=_settings_checkbox(form, "auto_open_browser", current.auto_open_browser),
+        open_browser_delay_seconds=current.open_browser_delay_seconds,
+        ollama_url=str(form.get("ollama_url", current.ollama_url)).strip() or current.ollama_url,
+        ollama_model=str(form.get("ollama_model", current.ollama_model)).strip() or current.ollama_model,
+        ollama_request_timeout_seconds=_parse_int_or_default(
+            form.get("ollama_request_timeout_seconds", current.ollama_request_timeout_seconds),
+            current.ollama_request_timeout_seconds,
+        ),
+        ollama_agent_model=str(form.get("ollama_agent_model", current.ollama_agent_model)).strip() or current.ollama_agent_model,
+        chatgpt_api_key_env_var=current.chatgpt_api_key_env_var,
+        chatgpt_model=current.chatgpt_model,
+        chatgpt_timeout_seconds=current.chatgpt_timeout_seconds,
+        copilot_enabled=current.copilot_enabled,
+        copilot_tenant_id=current.copilot_tenant_id,
+        copilot_client_id=current.copilot_client_id,
+        copilot_client_secret_env_var=current.copilot_client_secret_env_var,
+        outlook_enabled=_settings_checkbox(form, "enable_outlook", current.outlook_enabled),
+        outlook_default_task_folder=current.outlook_default_task_folder,
+        outlook_read_inbox_folder=current.outlook_read_inbox_folder,
+        outlook_max_emails=current.outlook_max_emails,
+    )
+
+
+def _build_settings_config_from_form(req: Any, current: AppConfig) -> AppConfig:
+    form = req.form
+    app_name = str(form.get("app_name", "")).strip()
+    if not app_name:
+        raise ValueError("App name cannot be empty.")
+
+    data_dir = str(form.get("data_dir", "")).strip()
+    if not data_dir:
+        raise ValueError("Data directory cannot be empty.")
+
+    default_workspace = str(form.get("default_workspace", "")).strip()
+    if not default_workspace:
+        raise ValueError("Default workspace cannot be empty.")
+
+    ai_backend = str(form.get("ai_backend", current.ai_backend)).strip().lower() or current.ai_backend
+    if ai_backend not in {"ollama", "dummy", "openai", "azure_openai", "copilot"}:
+        raise ValueError("Choose a valid AI backend.")
+
+    web_host = str(form.get("web_host", "")).strip()
+    if not web_host:
+        raise ValueError("Web host cannot be empty.")
+
+    web_port = _parse_int(form.get("web_port", ""))
+    if web_port < 1 or web_port > 65535:
+        raise ValueError("Web port must be between 1 and 65535.")
+
+    request_timeout = _parse_int(form.get("ollama_request_timeout_seconds", ""))
+    if request_timeout < 1:
+        raise ValueError("Request timeout must be a positive integer.")
+
+    ollama_url = str(form.get("ollama_url", "")).strip()
+    if not ollama_url:
+        raise ValueError("Ollama URL cannot be empty.")
+
+    ollama_model = str(form.get("ollama_model", "")).strip()
+    if not ollama_model:
+        raise ValueError("Ollama default model cannot be empty.")
+
+    ollama_agent_model = str(form.get("ollama_agent_model", "")).strip()
+    if not ollama_agent_model:
+        raise ValueError("Ollama agent model cannot be empty.")
+
+    return AppConfig(
+        app_name=app_name,
+        data_dir=data_dir,
+        default_workspace=default_workspace,
+        workspace_default_id=current.workspace_default_id,
+        enable_ai=form.get("enable_ai") == "1",
+        ai_backend=ai_backend,
+        enable_tasks=form.get("enable_tasks") == "1",
+        enable_notes=form.get("enable_notes") == "1",
+        enable_outlook=form.get("enable_outlook") == "1",
+        enable_history_panel=form.get("enable_history_panel") == "1",
+        enable_tray_icon=form.get("enable_tray_icon") == "1",
+        window_mode=current.window_mode,
+        transparent_background=current.transparent_background,
+        web_host=web_host,
+        web_port=web_port,
+        web_debug=current.web_debug,
+        auto_open_browser=form.get("auto_open_browser") == "1",
+        open_browser_delay_seconds=current.open_browser_delay_seconds,
+        ollama_url=ollama_url,
+        ollama_model=ollama_model,
+        ollama_request_timeout_seconds=request_timeout,
+        ollama_agent_model=ollama_agent_model,
+        chatgpt_api_key_env_var=current.chatgpt_api_key_env_var,
+        chatgpt_model=current.chatgpt_model,
+        chatgpt_timeout_seconds=current.chatgpt_timeout_seconds,
+        copilot_enabled=current.copilot_enabled,
+        copilot_tenant_id=current.copilot_tenant_id,
+        copilot_client_id=current.copilot_client_id,
+        copilot_client_secret_env_var=current.copilot_client_secret_env_var,
+        outlook_enabled=form.get("enable_outlook") == "1",
+        outlook_default_task_folder=current.outlook_default_task_folder,
+        outlook_read_inbox_folder=current.outlook_read_inbox_folder,
+        outlook_max_emails=current.outlook_max_emails,
+    )
+
+
+def _parse_int(raw_value: Any) -> int:
+    try:
+        return int(str(raw_value).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Enter a valid whole number.") from exc
+
+
+def _parse_int_or_default(raw_value: Any, default: int) -> int:
+    try:
+        return int(str(raw_value).strip())
+    except (TypeError, ValueError):
+        return default
 
 
 def _tasks_by_status(board: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:

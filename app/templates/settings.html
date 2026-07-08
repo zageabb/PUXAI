@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+  <div class="task-edit-shell">
+    <div class="task-edit-header glass-panel p-4 mb-4">
+      <div>
+        <div class="section-kicker">Setup Wizard</div>
+        <h1 class="display-title task-edit-title">Local settings</h1>
+        <p class="hero-copy task-edit-copy">Review and update your local PUXAI configuration. Saved changes go to <code>config.ini</code>. Restart the app to fully apply them.</p>
+      </div>
+      <div class="task-edit-actions">
+        <a class="btn btn-outline-dark" href="{{ url_for('index') }}">Back to board</a>
+      </div>
+    </div>
+
+    <div class="task-edit-grid">
+      <main class="task-edit-main">
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Configuration</div>
+              <h2>Core app and AI settings</h2>
+            </div>
+            <div class="section-note">Only safe local values are editable here. Secrets remain environment-variable based.</div>
+          </div>
+
+          <form action="{{ url_for('save_settings') }}" method="post" class="stack-form">
+            <div class="form-grid">
+              <div>
+                <label class="form-label">App name</label>
+                <input class="form-control" type="text" name="app_name" value="{{ settings_config.app_name }}">
+              </div>
+              <div>
+                <label class="form-label">Data directory</label>
+                <input class="form-control" type="text" name="data_dir" value="{{ settings_config.data_dir }}">
+              </div>
+              <div>
+                <label class="form-label">Default workspace</label>
+                <input class="form-control" type="text" name="default_workspace" value="{{ settings_config.default_workspace }}">
+              </div>
+              <div>
+                <label class="form-label">AI backend</label>
+                <select class="form-select" name="ai_backend">
+                  {% for backend_name in ai_backend_options %}
+                    <option value="{{ backend_name }}" {% if backend_name == settings_config.ai_backend %}selected{% endif %}>{{ backend_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">Web host</label>
+                <input class="form-control" type="text" name="web_host" value="{{ settings_config.web_host }}">
+              </div>
+              <div>
+                <label class="form-label">Web port</label>
+                <input class="form-control" type="number" min="1" max="65535" name="web_port" value="{{ settings_config.web_port }}">
+              </div>
+              <div>
+                <label class="form-label">Ollama URL</label>
+                <input class="form-control" type="text" name="ollama_url" value="{{ settings_config.ollama_url }}">
+              </div>
+              <div>
+                <label class="form-label">Request timeout (seconds)</label>
+                <input class="form-control" type="number" min="1" name="ollama_request_timeout_seconds" value="{{ settings_config.ollama_request_timeout_seconds }}">
+              </div>
+              <div>
+                <label class="form-label">Ollama default model</label>
+                <input class="form-control" type="text" name="ollama_model" value="{{ settings_config.ollama_model }}">
+              </div>
+              <div>
+                <label class="form-label">Ollama agent model</label>
+                <input class="form-control" type="text" name="ollama_agent_model" value="{{ settings_config.ollama_agent_model }}">
+              </div>
+            </div>
+
+            <div class="two-up-grid">
+              <div class="glass-panel p-3">
+                <div class="mini-label mb-3">Feature Flags</div>
+                <div class="stack-form">
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="enable_ai" value="1" {% if settings_config.enable_ai %}checked{% endif %}>
+                    <span class="form-check-label">Enable AI</span>
+                  </label>
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="auto_open_browser" value="1" {% if settings_config.auto_open_browser %}checked{% endif %}>
+                    <span class="form-check-label">Auto open browser</span>
+                  </label>
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="enable_tasks" value="1" {% if settings_config.enable_tasks %}checked{% endif %}>
+                    <span class="form-check-label">Enable tasks</span>
+                  </label>
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="enable_notes" value="1" {% if settings_config.enable_notes %}checked{% endif %}>
+                    <span class="form-check-label">Enable notes</span>
+                  </label>
+                </div>
+              </div>
+              <div class="glass-panel p-3">
+                <div class="mini-label mb-3">Desktop Flags</div>
+                <div class="stack-form">
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="enable_outlook" value="1" {% if settings_config.enable_outlook %}checked{% endif %}>
+                    <span class="form-check-label">Enable Outlook</span>
+                  </label>
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="enable_history_panel" value="1" {% if settings_config.enable_history_panel %}checked{% endif %}>
+                    <span class="form-check-label">Enable history panel</span>
+                  </label>
+                  <label class="form-check">
+                    <input class="form-check-input" type="checkbox" name="enable_tray_icon" value="1" {% if settings_config.enable_tray_icon %}checked{% endif %}>
+                    <span class="form-check-label">Enable tray icon</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="task-edit-actions">
+              <button class="btn btn-primary" type="submit">Save settings</button>
+              {% if restart_required %}
+                <span class="small text-muted align-self-center">Restart required for full application of saved values.</span>
+              {% endif %}
+            </div>
+          </form>
+        </section>
+      </main>
+
+      <aside class="task-edit-side">
+        <section class="glass-panel p-4 mb-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Connection Test</div>
+              <h2>AI backend status</h2>
+            </div>
+          </div>
+          <div id="settingsAiStatusPanel" class="status-stack">
+            <div class="status-row"><span>Backend</span><code id="settingsBackendName">{{ settings_ai_status.backend }}</code></div>
+            <div class="status-row">
+              <span>Reachable</span>
+              <strong id="settingsBackendReachable" class="{% if settings_ai_status.available %}text-success{% else %}text-danger{% endif %}">
+                {% if settings_ai_status.available %}Online{% else %}Offline{% endif %}
+              </strong>
+            </div>
+            <div class="status-row"><span>URL</span><code id="settingsBackendUrl">{{ settings_ai_status.url }}</code></div>
+            <div class="status-row"><span>Default model</span><code id="settingsDefaultModel">{{ settings_ai_status.default_model }}</code></div>
+            <div class="status-row"><span>Agent model</span><code id="settingsAgentModel">{{ settings_ai_status.agent_model }}</code></div>
+          </div>
+          <button class="btn btn-outline-primary mt-3 w-100" type="button" id="testAiConnectionButton">Test Ollama connection</button>
+          <div class="tag-row mt-3" id="settingsAiModels">
+            {% for model in settings_ai_status.models %}
+              <span class="tag-chip">{{ model }}</span>
+            {% else %}
+              <span class="small text-muted">No models reported yet.</span>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="glass-panel p-4">
+          <div class="section-heading">
+            <div>
+              <div class="section-kicker">Safety Notes</div>
+              <h2>What this page does not store</h2>
+            </div>
+          </div>
+          <div class="stack-form small text-muted">
+            <div>API keys are not shown or stored here.</div>
+            <div>Environment-variable based secrets remain in the environment.</div>
+            <div>This page updates local runtime configuration only.</div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+{% endblock %}

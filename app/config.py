@@ -208,3 +208,61 @@ def load_config(config_path: str = "config.ini") -> AppConfig:
 
     LOGGER.debug("Configuration loaded: %s", config)
     return config
+
+
+def save_config(config: AppConfig, config_path: str = "config.ini") -> None:
+    config_file = Path(config_path)
+    with config_file.open("w", encoding="utf-8") as handle:
+        handle.write("[general]\n")
+        handle.write(f"app_name = {config.app_name}\n")
+        handle.write(f"data_dir = {config.data_dir}\n")
+        handle.write(f"default_workspace = {config.default_workspace}\n")
+        handle.write(f"workspace_default_id = {config.workspace_default_id}\n\n")
+
+        handle.write("[features]\n")
+        handle.write(f"enable_ai = {'true' if config.enable_ai else 'false'}\n")
+        handle.write("# Current backend options:\n")
+        handle.write("# - ollama\n")
+        handle.write("# - dummy\n")
+        handle.write("# Future planned options:\n")
+        handle.write("# - openai\n")
+        handle.write("# - azure_openai\n")
+        handle.write("# - copilot\n")
+        handle.write(f"ai_backend = {config.ai_backend}\n")
+        handle.write(f"enable_tasks = {'true' if config.enable_tasks else 'false'}\n")
+        handle.write(f"enable_notes = {'true' if config.enable_notes else 'false'}\n")
+        handle.write(f"enable_outlook = {'true' if config.enable_outlook else 'false'}\n")
+        handle.write(f"enable_history_panel = {'true' if config.enable_history_panel else 'false'}\n")
+        handle.write(f"enable_tray_icon = {'true' if config.enable_tray_icon else 'false'}\n")
+        handle.write(f"window_mode = {config.window_mode}\n")
+        handle.write(f"transparent_background = {'true' if config.transparent_background else 'false'}\n\n")
+
+        handle.write("[web]\n")
+        handle.write(f"host = {config.web_host}\n")
+        handle.write(f"port = {config.web_port}\n")
+        handle.write(f"debug = {'true' if config.web_debug else 'false'}\n")
+        handle.write(f"auto_open_browser = {'true' if config.auto_open_browser else 'false'}\n")
+        handle.write(f"open_browser_delay_seconds = {config.open_browser_delay_seconds}\n\n")
+
+        handle.write("[ollama]\n")
+        handle.write(f"url = {config.ollama_url}\n")
+        handle.write(f"model = {config.ollama_model}\n")
+        handle.write(f"agent_model = {config.ollama_agent_model}\n")
+        handle.write(f"request_timeout_seconds = {config.ollama_request_timeout_seconds}\n\n")
+
+        handle.write("[chatgpt]\n")
+        handle.write(f"api_key_env_var = {config.chatgpt_api_key_env_var}\n")
+        handle.write(f"model = {config.chatgpt_model}\n")
+        handle.write(f"timeout_seconds = {config.chatgpt_timeout_seconds}\n\n")
+
+        handle.write("[copilot]\n")
+        handle.write(f"enabled = {'true' if config.copilot_enabled else 'false'}\n")
+        handle.write(f"tenant_id = {config.copilot_tenant_id}\n")
+        handle.write(f"client_id = {config.copilot_client_id}\n")
+        handle.write(f"client_secret_env_var = {config.copilot_client_secret_env_var}\n\n")
+
+        handle.write("[outlook]\n")
+        handle.write(f"enabled = {'true' if config.outlook_enabled else 'false'}\n")
+        handle.write(f"default_task_folder = {config.outlook_default_task_folder}\n")
+        handle.write(f"read_inbox_folder = {config.outlook_read_inbox_folder}\n")
+        handle.write(f"max_emails = {config.outlook_max_emails}\n")

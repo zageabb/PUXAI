@@ -175,3 +175,61 @@ if (sideRailToggle && layoutGrid && sideRail) {
     syncSideRailState(nextState);
   });
 }
+
+const testAiConnectionButton = document.getElementById("testAiConnectionButton");
+const settingsBackendName = document.getElementById("settingsBackendName");
+const settingsBackendReachable = document.getElementById("settingsBackendReachable");
+const settingsBackendUrl = document.getElementById("settingsBackendUrl");
+const settingsDefaultModel = document.getElementById("settingsDefaultModel");
+const settingsAgentModel = document.getElementById("settingsAgentModel");
+const settingsAiModels = document.getElementById("settingsAiModels");
+
+if (
+  testAiConnectionButton &&
+  settingsBackendName &&
+  settingsBackendReachable &&
+  settingsBackendUrl &&
+  settingsDefaultModel &&
+  settingsAgentModel &&
+  settingsAiModels
+) {
+  testAiConnectionButton.addEventListener("click", async () => {
+    testAiConnectionButton.disabled = true;
+    testAiConnectionButton.textContent = "Testing...";
+    try {
+      const response = await fetch("/api/ai/status");
+      const payload = await response.json();
+      settingsBackendName.textContent = payload.backend || "unknown";
+      settingsBackendReachable.textContent = payload.available ? "Online" : "Offline";
+      settingsBackendReachable.className = payload.available ? "text-success" : "text-danger";
+      settingsBackendUrl.textContent = payload.url || "n/a";
+      settingsDefaultModel.textContent = payload.default_model || "n/a";
+      settingsAgentModel.textContent = payload.agent_model || "n/a";
+      settingsAiModels.innerHTML = "";
+      if (payload.models && payload.models.length) {
+        payload.models.forEach((model) => {
+          const chip = document.createElement("span");
+          chip.className = "tag-chip";
+          chip.textContent = model;
+          settingsAiModels.appendChild(chip);
+        });
+      } else {
+        const emptyState = document.createElement("span");
+        emptyState.className = "small text-muted";
+        emptyState.textContent = "No models reported.";
+        settingsAiModels.appendChild(emptyState);
+      }
+    } catch (error) {
+      settingsBackendReachable.textContent = "Offline";
+      settingsBackendReachable.className = "text-danger";
+      settingsAiModels.innerHTML = "";
+      const errorState = document.createElement("span");
+      errorState.className = "small text-danger";
+      errorState.textContent = `Connection test failed: ${error}`;
+      settingsAiModels.appendChild(errorState);
+    } finally {
+      testAiConnectionButton.disabled = false;
+      testAiConnectionButton.textContent = "Test Ollama connection";
+    }
+  });
+}
