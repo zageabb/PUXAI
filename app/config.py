@@ -42,7 +42,7 @@ class AppConfig:
     ollama_agent_model: str = "llama3.1:8b"
 
     chatgpt_api_key_env_var: str = "OPENAI_API_KEY"
-    chatgpt_model: str = "gpt-4.1-mini"
+    chatgpt_model: str = "gpt-5.6"
     chatgpt_timeout_seconds: int = 60
 
     copilot_enabled: bool = False
