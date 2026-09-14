@@ -1,5 +1,21 @@
 # PUXAI
 
+## Ubuntu server deployment
+
+Verified on **14 September 2026** against the listeners, user systemd services,
+Docker port mappings and deployment registry on `192.168.1.249`.
+
+**No active application listener was found for this checkout.**
+Port `8787` is a configured/development port, not a verified live URL.
+
+Checkout: `/home/zageabb/puxai/puxai`.
+
+Development defaults and container-internal ports elsewhere in this repository
+may differ from this host deployment. Use the live ports above when accessing
+this Ubuntu server; do not start a second copy on a port already occupied.
+
+[Complete Ubuntu port inventory](https://github.com/zageabb/universal-deployment-agent/blob/main/UBUNTU_PORTS.md).
+
 Personal UX and AI — a local-first AI command centre where each workspace combines tasks, notes, repositories, documents, diagrams, app launchers, and AI agents.
 
 PUXAI is a practical local workspace built around a Flask web app, a pluggable AI backend, a kanban board, Markdown capture, Mermaid diagrams, and safe task-level actions. It is intended to feel more like an AI operating surface than a chat box with a few forms around it.
